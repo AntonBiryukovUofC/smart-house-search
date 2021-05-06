@@ -1,2 +1,8 @@
-MAX_PRICE = 5000000
-MIN_PRICE = 0
+CSS_CLASS_CARD = """
+.graphclass {
+ div: {
+   width: 99%;
+ }
+}
+"""
+

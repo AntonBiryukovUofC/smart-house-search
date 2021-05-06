@@ -43,31 +43,30 @@ map = hv.element.tiles.OSM().opts(width=600, height=550)
 
 pins = []
 
+
 def house_plot(price_min, price_max, x_pin=None, y_pin=None):
     df_filtered = df[(df['price'] <= price_max) & (df['price'] >= price_min)]
     house_points = hv.Points(df_filtered, ['easting', 'northing'], ['price']).opts(tools=[hover, 'tap'], alpha=0.7,
-                                                                           hover_fill_alpha=0.4, size=10, width=600,
-                                                                           height=550)
+                                                                                   hover_fill_alpha=0.4, size=10,
+                                                                                   width=600,
+                                                                                   height=550)
     if x_pin and y_pin:
         pins.append([x_pin, y_pin])
         pin_points = hv.Points(pins).opts(color='r', size=10, alpha=0.7)
         return (house_points * pin_points)
     else:
         return house_points
-    # return df_filtered.hvplot('easting', 'northing', kind='scatter')
 
 
 houses = house_plot(min_price.value, max_price.value)
 
 stream_map = hv.streams.Tap(source=map, x=np.nan, y=np.nan)
 
-
 layout_map = pn.Row(map * houses)
 
-# make a function that displays the location when called.
+
+
 def location(x, y):
-    # lon, lat = easting_northing_to_lon_lat(x, y)
-    # return pn.pane.Str('Click at %0.3f, %0.3f' % (lon, lat), width=200)
     layout_map[0] = pn.Row(map * house_plot(min_price.value, max_price.value, x, y))
 
 

@@ -15,7 +15,7 @@ import param
 from utils import get_price_range, get_dummy_house_df
 from redis_dict import RedisDict
 from constants import CSS_CLASS_CARD
-from location import geocode_destination_here
+# from location import geocode_destination_here
 
 r_dic = RedisDict(namespace='house-search', host="10.30.40.132")
 bootstrap = pn.template.BootstrapTemplate(title='Smart House Search')

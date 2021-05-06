@@ -15,8 +15,9 @@ import param
 from utils import get_price_range, get_dummy_house_df
 from redis_dict import RedisDict
 from constants import CSS_CLASS_CARD
+from location import geocode_destination_here
 
-r_dic = RedisDict(namespace='house-search')
+r_dic = RedisDict(namespace='house-search', host="10.30.40.132")
 bootstrap = pn.template.BootstrapTemplate(title='Smart House Search')
 pn.config.sizing_mode = "stretch_width"
 pn.extension(raw_css=[CSS_CLASS_CARD])
@@ -45,7 +46,6 @@ class ReactiveDashboard(param.Parameterized):
     @pn.depends('price_slider', 'rooms_slider', 'pins', watch=False)
     def house_plot(self):
 
-
         if 'northing' not in self.house_df.columns:
             self.get_easting_northing()
 
@@ -69,7 +69,8 @@ class ReactiveDashboard(param.Parameterized):
             self.get_easting_northing()
 
         display_df = self.house_df[
-            (self.house_df['price'] <= self.maximum_price) & (self.house_df['price'] >= self.minimum_price)].drop(columns=['lat', 'lon', 'easting', 'northing'])
+            (self.house_df['price'] <= self.maximum_price) & (self.house_df['price'] >= self.minimum_price)].drop(
+            columns=['lat', 'lon', 'easting', 'northing'])
         display_df = display_df.set_index('address')
         return display_df
 
@@ -82,9 +83,32 @@ class ReactiveDashboard(param.Parameterized):
     def pin_dataframe(self):
         pins = np.array(self.pins)
 
+    def pull_redis(self):
+        dataframes = []
+        listings_honestdoor_addresses = r_dic.redis.smembers('house-search:listings_honestdoor')
+        for a in listings_honestdoor_addresses:
+            address = r_dic.redis.get(a)["address"]
+            response = geocode_destination_here(address)
+            lat = response['lat']
+            lon = response['lon']
+            price = r_dic.redis.get(a)["price"]
+            bedrooms = r_dic.redis.get(a)["bedrooms"]
+            bathrooms = r_dic.redis.get(a)["bathrooms"]
+            size = r_dic.redis.get(a)["size"]
+            dataframes.append(pd.DataFrame({'address': address,
+                                            'lat': lat,
+                                            'lon': lon,
+                                            'price': price,
+                                            'bedrooms': bedrooms,
+                                            'size': size}))
+        df = pd.concat(dataframes)
+        self.house_df = df
 
     def panel(self):
         result = bootstrap
+
+        # self.pull_redis()
+
         result.sidebar.append(self.param.price_slider)
         result.sidebar.append(self.param.rooms_slider)
 
@@ -105,8 +129,6 @@ class ReactiveDashboard(param.Parameterized):
             pn.Column(pn.Card(df_widget, title="Properties"), pn.Card(df_widget, title="Properties"))
         )
         bootstrap.main.append(layout)
-
-
 
         return result
 

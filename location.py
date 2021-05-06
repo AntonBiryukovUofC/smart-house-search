@@ -1,5 +1,6 @@
 import logging
 import json
+import math
 from datetime import datetime
 
 import requests
@@ -24,13 +25,14 @@ class Location:
 
     def add_point_of_intrest(self, location):
         transit_route = transit_routes(self, location)
-        print(transit_route)
         time = transit_time(transit_route['routes'][0])
-        data = {'location': location, 'transit_route': transit_route, 'transit_time': time}
+        walk_time=transit_time(walk(self, location)['routes'][0])
+        commute={'transit_route': transit_route, 'transit_time': time, 'walk_time':walk_time}
+        data = {'location': location, 'commute': commute}
         self.points_of_interest.append(data)
 
     def __eq__(self, other):
-        if self.latitude == other.lattidue and self.longitude == other.longitude:
+        if self.hereid==other.hereid:
             return True
         else:
             return False
@@ -47,7 +49,6 @@ def transit_routes(spot1: Location, spot2: Location):
     r = requests.get(url='https://transit.router.hereapi.com/v8/routes', params=data)
     return r.json()
 
-
 def transit_time(route):
     time = 0
     for i in route['sections']:
@@ -55,6 +56,12 @@ def transit_time(route):
         arrival = datetime.strptime(i['arrival']['time'], '%Y-%m-%dT%H:%M:%S%z')
         time = time + (arrival - departure).total_seconds()
     # convert too mins
-    time = time / 60
+    time = math.ceil((time / 60))
     return time
 
+def walk(spot1: Location, spot2: Location):
+    data = {'apikey': API_KEY, 'origin': str(spot1.latitude) + ',' + str(spot1.longitude),
+            'destination': str(spot2.latitude) + ',' + str(spot2.longitude),
+            'transportMode':'pedestrian'}
+    r = requests.get(url='https://router.hereapi.com/v8/routes', params=data)
+    return r.json()

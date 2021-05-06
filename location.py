@@ -1,15 +1,20 @@
 import logging
 import json
+import os
 import math
 from datetime import datetime
-
+from dotenv import find_dotenv, load_dotenv
 import requests
+
+load_dotenv(find_dotenv())
+
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
 
 URL = "https://geocode.search.hereapi.com/v1/geocode"
-API_KEY = ''
+API_KEY = os.environ["HERE_API_KEY"]
+
 
 
 class Location:

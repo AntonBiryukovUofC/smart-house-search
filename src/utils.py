@@ -2,6 +2,15 @@ import numpy as np
 import pandas as pd
 
 
+def get_latitude_longitude_listing(listing_key, redis):
+    if listing_key is None:
+        return False
+    else:
+        lat = float(redis.get(listing_key + "/latitude"))
+        long = float(redis.get(listing_key + "/longitude"))
+        return lat, long
+
+
 def get_price_range():
     price_range_1 = np.arange(0, 500000, 25000)
     price_range_2 = np.arange(500000, 1000000, 50000)

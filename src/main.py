@@ -1,21 +1,18 @@
-import panel as pn
-import numpy as np
+import json
+
 import holoviews as hv
-import hvplot.pandas
-from panel.template import DarkTheme
+import numpy as np
 import pandas as pd
-import geoviews as gv
-from holoviews.util.transform import easting_northing_to_lon_lat, lon_lat_to_easting_northing
-from bokeh.models.formatters import PrintfTickFormatter
-from bokeh.models.formatters import NumeralTickFormatter
-from bokeh.models import HoverTool, TapTool
-from bokeh.events import Tap
-from vega_datasets import data as vds
+import panel as pn
 import param
-from utils import get_price_range, get_dummy_house_df
+from bokeh.models import HoverTool
+from holoviews.util.transform import lon_lat_to_easting_northing
 from redis_dict import RedisDict
+from tqdm import tqdm
+from loguru import logger as log
 from constants import CSS_CLASS_CARD
-# from location import geocode_destination_here
+#from location import geocode_destination_here
+from utils import get_price_range, get_dummy_house_df
 
 r_dic = RedisDict(namespace='house-search', host="10.30.40.132")
 bootstrap = pn.template.BootstrapTemplate(title='Smart House Search')
@@ -23,27 +20,46 @@ pn.config.sizing_mode = "stretch_width"
 pn.extension(raw_css=[CSS_CLASS_CARD])
 
 
+def pull_redis(redis_client):
+    dataframes = []
+    listings_honestdoor_addresses = redis_client.smembers('%s:listings_honestdoor' % namespace)
+    for a in tqdm(list(listings_honestdoor_addresses)[:100]):
+        # log.info(a)
+        key_to_data = f'{namespace}:listings/{a}'
+        log.info(key_to_data)
+        listing_data = pd.DataFrame(json.loads(r_dic.redis.get(key_to_data)), index=[a])
+        dataframes.append(listing_data)
+    df = pd.concat(dataframes)
+    return df
+
+namespace = 'house-search'
+house_df_default = pull_redis(r_dic.redis)
+
 class ReactiveDashboard(param.Parameterized):
     title = pn.pane.Markdown("# Smart House Search")
     pins = param.List(default=[])
-    house_df = get_dummy_house_df()
+    #house_df = get_dummy_house_df()
+    house_df = house_df_default
     tooltips = [("Price", "@price")]
     hover = HoverTool(tooltips=tooltips)
     price_range = get_price_range()
     minimum_price = param.Selector(objects=list(price_range))
     maximum_price = param.Selector(objects=list(price_range), default=price_range[-1])
     price_slider = param.Range(default=(0, house_df['price'].max()), bounds=(0, house_df['price'].max()))
-    rooms_slider = param.Range(default=(0, house_df['bedrooms'].max()), bounds=(0, house_df['bedrooms'].max()))
+    rooms_slider = param.Range(default=(0, 7), bounds=(0, 7))
+    bathrooms_slider = param.Range(default=(0, 7), bounds=(0, 7))
+
     map_background = hv.element.tiles.OSM().opts(width=600, height=550)
     stream = hv.streams.Tap(source=map_background, x=np.nan, y=np.nan)
 
+
     def get_easting_northing(self):
-        self.house_df['easting'] = self.house_df.apply(lambda x: lon_lat_to_easting_northing(x['lon'], x['lat'])[0],
+        self.house_df['easting'] = self.house_df.apply(lambda x: lon_lat_to_easting_northing(x['long'], x['lat'])[0],
                                                        axis=1)
-        self.house_df['northing'] = self.house_df.apply(lambda x: lon_lat_to_easting_northing(x['lon'], x['lat'])[1],
+        self.house_df['northing'] = self.house_df.apply(lambda x: lon_lat_to_easting_northing(x['long'], x['lat'])[1],
                                                         axis=1)
 
-    @pn.depends('price_slider', 'rooms_slider', 'pins', watch=False)
+    @pn.depends('price_slider', 'rooms_slider','bathrooms_slider', 'pins', watch=False)
     def house_plot(self):
 
         if 'northing' not in self.house_df.columns:
@@ -53,9 +69,13 @@ class ReactiveDashboard(param.Parameterized):
             (self.house_df['price'] <= self.price_slider[1]) & (self.house_df['price'] >= self.price_slider[0])]
         df_filtered = df_filtered[
             (df_filtered['bedrooms'] <= self.rooms_slider[1]) & (df_filtered['bedrooms'] >= self.rooms_slider[0])]
+        df_filtered = df_filtered[
+            (df_filtered['bathrooms'] <= self.rooms_slider[1]) & (df_filtered['bathrooms'] >= self.rooms_slider[0])]
+
         house_points = hv.Points(df_filtered, ['easting', 'northing'], ['price']).opts(tools=[self.hover, 'tap'],
-                                                                                       alpha=0.7,
-                                                                                       hover_fill_alpha=0.4, size=20,
+                                                                                       alpha=0.99,
+                                                                                       hover_fill_alpha=0.99, size=20,
+                                                                                       hover_fill_color='firebrick',
                                                                                        width=600,
                                                                                        height=550)
         if self.pins:
@@ -70,7 +90,7 @@ class ReactiveDashboard(param.Parameterized):
 
         display_df = self.house_df[
             (self.house_df['price'] <= self.maximum_price) & (self.house_df['price'] >= self.minimum_price)].drop(
-            columns=['lat', 'lon', 'easting', 'northing'])
+            columns=['lat', 'long', 'easting', 'northing'])
         display_df = display_df.set_index('address')
         return display_df
 
@@ -85,22 +105,13 @@ class ReactiveDashboard(param.Parameterized):
 
     def pull_redis(self):
         dataframes = []
-        listings_honestdoor_addresses = r_dic.redis.smembers('house-search:listings_honestdoor')
-        for a in listings_honestdoor_addresses:
-            address = r_dic.redis.get(a)["address"]
-            response = geocode_destination_here(address)
-            lat = response['lat']
-            lon = response['lon']
-            price = r_dic.redis.get(a)["price"]
-            bedrooms = r_dic.redis.get(a)["bedrooms"]
-            bathrooms = r_dic.redis.get(a)["bathrooms"]
-            size = r_dic.redis.get(a)["size"]
-            dataframes.append(pd.DataFrame({'address': address,
-                                            'lat': lat,
-                                            'lon': lon,
-                                            'price': price,
-                                            'bedrooms': bedrooms,
-                                            'size': size}))
+        listings_honestdoor_addresses = r_dic.redis.smembers('%s:listings_honestdoor' % namespace)
+        for a in tqdm(listings_honestdoor_addresses):
+            #log.info(a)
+            key_to_data = f'{namespace}:listings/{a}'
+            log.info(key_to_data)
+            listing_data = pd.DataFrame(json.loads(r_dic.redis.get(key_to_data)),index=[a])
+            dataframes.append(listing_data)
         df = pd.concat(dataframes)
         self.house_df = df
 
@@ -134,4 +145,4 @@ class ReactiveDashboard(param.Parameterized):
 
 
 res = ReactiveDashboard(name="").panel()
-pn.serve({"panel_main": res}, port=5006)
+res.servable()

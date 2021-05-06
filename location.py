@@ -13,8 +13,8 @@ log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
 
 URL = "https://geocode.search.hereapi.com/v1/geocode"
-API_KEY = os.environ["HERE_API_KEY"]
 
+API_KEY = os.environ["HERE_API_KEY"]
 
 
 class Location:
@@ -27,13 +27,14 @@ class Location:
         self.latitude = response['items'][0]['position']['lat']
         self.mapview = response['items'][0]['mapView']
         self.points_of_interest = []
+        self.listing_key = None
 
-    def add_point_of_intrest(self, location):
+    def add_point_of_interest(self, location):
         transit_route = transit_routes(self, location)
         time = transit_time(transit_route['routes'][0])
         walk_time = transit_time(walk(self, location)['routes'][0])
         drive_time = transit_time(drive(self, location)['routes'][0])
-        bike_time=transit_time(bike(self, location)['routes'][0])
+        bike_time = transit_time(bike(self, location)['routes'][0])
         commute = {'transit_route': transit_route, 'transit_time': time,
                    'walk_time': walk_time,
                    'drive_time': drive_time,

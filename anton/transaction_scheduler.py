@@ -8,7 +8,7 @@ from anton.honestdoor_utils import login, get_page_source, read_transaction_tabl
 import os
 # Get a subset from Redis
 namespace = 'house-search'
-NSUB=350
+NSUB=1000
 r_dic = RedisDict(namespace=namespace)
 listings_all = r_dic.redis.smembers('house-search:listings')
 listings_honestdoor = r_dic.redis.smembers('house-search:listings_honestdoor')
@@ -31,8 +31,14 @@ tmp_data_folder = os.environ['TMP_DATA']
 os.makedirs(tmp_data_folder,exist_ok=True)
 
 for property in pages_to_parse['listing']:
+
+
     prop_url_part = property.split('-calgary')[0]+'-calgary-ab'
     full_url =f'https://www.honestdoor.com/property/{prop_url_part}'
+
+    if r_dic.redis.sismember('house-search:listings_honestdoor',property):
+        log.error(f'Skipping {full_url}, already processed!')
+        continue
     fname = os.path.join(tmp_data_folder, f'{property}.json')
     log.info(f'Processing {full_url}')
     try:

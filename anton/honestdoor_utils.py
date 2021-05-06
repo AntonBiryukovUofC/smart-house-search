@@ -64,7 +64,6 @@ def read_transaction_table(page_str,property_id):
     soup = BeautifulSoup(page_str,'lxml')
 
     table = soup.find('div', attrs={'class': re.compile('^TransactionsSection__Root.*')})
-    log.info(f'Print {table}')
     df = pd.read_html(str(table))[0]
     df['property_id'] = property_id
     return df

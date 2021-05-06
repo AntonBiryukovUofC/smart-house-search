@@ -18,6 +18,8 @@ PARALLEL_PAGE_PULL_COUNT = 5
 
 class ListingModel(BaseModel):
     address: str
+    lat: float
+    long: float
     detail_url: str
     price: Optional[float]
     id: str
@@ -28,6 +30,8 @@ class ListingModel(BaseModel):
     size: Optional[str]
     type: Optional[str]
     stories: Optional[float]
+    lot_size: Optional[str]
+    photo_url: Optional[str]
 
 
 async def store_single_listing_data(data_chunk, redis, redis_semaphore):
@@ -38,11 +42,19 @@ async def store_single_listing_data(data_chunk, redis, redis_semaphore):
     url_key = regex_match.group(2)
     print(f"at url_key={url_key}")
 
+    lat = data_chunk["Property"]['Address']["Latitude"]
+    long = data_chunk["Property"]['Address']["Longitude"]
+
     try:
         price=float(data_chunk["Property"]["Price"].lstrip("$").replace(",", ""))
     except Exception:
         print(f"Failed to convert price string {data_chunk['Property']['Price'].lstrip('$').replace(',', '')} to float")
-        price=None
+        price = None
+
+    if "SizeTotal" in data_chunk["Land"]:
+        lot_size = data_chunk["Land"]['SizeTotal']
+    else:
+        lot_size = None
 
     if "Building" in data_chunk:
         building_data = data_chunk["Building"]
@@ -67,6 +79,11 @@ async def store_single_listing_data(data_chunk, redis, redis_semaphore):
         else:
             build_type = None
 
+    if "Photo" in data_chunk["Property"]:
+        photo_url = data_chunk["Property"]["Photo"][0]["HighResPath"]
+    else:
+        photo_url = None
+
     listing = ListingModel(address=address,
                            detail_url="https://www.realtor.ca/real-estate" + data_chunk["RelativeDetailsURL"],
                            id=data_chunk["Id"],
@@ -77,7 +94,11 @@ async def store_single_listing_data(data_chunk, redis, redis_semaphore):
                            bedrooms=bedrooms,
                            size=size,
                            stories=stories,
-                           type=build_type
+                           type=build_type,
+                           lot_size=lot_size,
+                           photo_url=photo_url,
+                           lat=lat,
+                           long=long,
                            )
 
     async with redis_semaphore:

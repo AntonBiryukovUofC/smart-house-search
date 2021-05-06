@@ -26,16 +26,22 @@ class Location:
     def add_point_of_intrest(self, location):
         transit_route = transit_routes(self, location)
         time = transit_time(transit_route['routes'][0])
-        walk_time=transit_time(walk(self, location)['routes'][0])
-        commute={'transit_route': transit_route, 'transit_time': time, 'walk_time':walk_time}
+        walk_time = transit_time(walk(self, location)['routes'][0])
+        drive_time = transit_time(drive(self, location)['routes'][0])
+        bike_time=transit_time(bike(self, location)['routes'][0])
+        commute = {'transit_route': transit_route, 'transit_time': time,
+                   'walk_time': walk_time,
+                   'drive_time': drive_time,
+                   'bike_time': bike_time}
         data = {'location': location, 'commute': commute}
         self.points_of_interest.append(data)
 
     def __eq__(self, other):
-        if self.hereid==other.hereid:
+        if self.hereid == other.hereid:
             return True
         else:
             return False
+
 
 def geocode_destination_here(x: str):
     log.info(f"Geocoding query : {x}")
@@ -43,11 +49,13 @@ def geocode_destination_here(x: str):
     r = requests.get(URL, params=payload)
     return r.json()
 
+
 def transit_routes(spot1: Location, spot2: Location):
     data = {'apikey': API_KEY, 'origin': str(spot1.latitude) + ',' + str(spot1.longitude),
             'destination': str(spot2.latitude) + ',' + str(spot2.longitude)}
     r = requests.get(url='https://transit.router.hereapi.com/v8/routes', params=data)
     return r.json()
+
 
 def transit_time(route):
     time = 0
@@ -59,9 +67,26 @@ def transit_time(route):
     time = math.ceil((time / 60))
     return time
 
+
 def walk(spot1: Location, spot2: Location):
     data = {'apikey': API_KEY, 'origin': str(spot1.latitude) + ',' + str(spot1.longitude),
             'destination': str(spot2.latitude) + ',' + str(spot2.longitude),
-            'transportMode':'pedestrian'}
+            'transportMode': 'pedestrian'}
+    r = requests.get(url='https://router.hereapi.com/v8/routes', params=data)
+    return r.json()
+
+
+def drive(spot1: Location, spot2: Location):
+    data = {'apikey': API_KEY, 'origin': str(spot1.latitude) + ',' + str(spot1.longitude),
+            'destination': str(spot2.latitude) + ',' + str(spot2.longitude),
+            'transportMode': 'car'}
+    r = requests.get(url='https://router.hereapi.com/v8/routes', params=data)
+    return r.json()
+
+
+def bike(spot1: Location, spot2: Location):
+    data = {'apikey': API_KEY, 'origin': str(spot1.latitude) + ',' + str(spot1.longitude),
+            'destination': str(spot2.latitude) + ',' + str(spot2.longitude),
+            'transportMode': 'bicycle'}
     r = requests.get(url='https://router.hereapi.com/v8/routes', params=data)
     return r.json()

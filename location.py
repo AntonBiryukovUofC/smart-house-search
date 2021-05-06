@@ -8,11 +8,13 @@ import requests
 
 load_dotenv(find_dotenv())
 
+
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
 
 URL = "https://geocode.search.hereapi.com/v1/geocode"
 API_KEY = os.environ["HERE_API_KEY"]
+
 
 
 class Location:

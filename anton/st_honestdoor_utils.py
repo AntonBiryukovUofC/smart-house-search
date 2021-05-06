@@ -15,6 +15,8 @@ import ssl
 
 from selenium.webdriver.common.keys import Keys
 
+from honestdoor_utils import get_page_source
+
 ssl._create_default_https_context = ssl._create_unverified_context
 load_dotenv(find_dotenv())
 
@@ -60,8 +62,12 @@ def get_page():
     return driver.page_source
 
 page_str = get_page()
-soup = BeautifulSoup(page_str)
-value_section = soup.find('div', attrs={'class': re.compile('^AssessmentsSection__Root.*')}).find('span', attrs={'class': re.compile('.*statistic-.*-value.*')})
-st.write(value_section.text)
+#page_str = get_page_source("https://www.honestdoor.com/property/113-1814-18-street-sw-calgary-ab", driver)
+
+soup = BeautifulSoup(page_str,'lxml')
+st.write('page could not be found' in str(soup))
+
+#value_section = soup.find('div', attrs={'class': re.compile('^AssessmentsSection__Root.*')}).find('span', attrs={'class': re.compile('.*statistic-.*-value.*')})
+#st.write(value_section.text)
 #df.to_csv('tmp.csv')
 #st.write(page_str)

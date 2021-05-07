@@ -53,7 +53,12 @@ def pull_redis(redis_client):
         listing_data = pd.DataFrame(json.loads(r_dic.redis.get(key_to_data)), index=[a])
         honestdoor_data = pd.read_json(r_dic.redis.get(key_to_hd_data))
         # Calculated score data
-        score_data = {'Downtown Commute': round(float(redis_client.get(key_to_data + "/downtown_commute_score")), 2)}
+        dt_commute = redis_client.get(key_to_data + "/downtown_commute_score")
+        if dt_commute:
+            score_data = {'Downtown Commute': round(float(redis_client.get(key_to_data + "/downtown_commute_score")), 2)}
+        else:
+            score_data = {'Downtown Commute': 0}
+
         custom_score = redis_client.get(key_to_data + "/custom_commute_score")
 
         # if this isn't set could consider calculating
@@ -148,7 +153,6 @@ class ReactiveDashboard(param.Parameterized):
                    tools=tools
                    )
         p.add_tile(OSM_tile_source)
-        print(df_filtered.shape)
         circle_renderer = p.circle(x='easting', y='northing',
                                    fill_color='midnightblue',
                                    fill_alpha=0.95,
@@ -165,15 +169,15 @@ class ReactiveDashboard(param.Parameterized):
         tool_circle_tap = TapTool(renderers=[circle_renderer])
         p.add_tools(tool_circle_hover)
         p.add_tools(tool_circle_tap)
-
-
+        ls=[123]
 
         def callback_id(attr, old, new):
             print('Indices Hello!')
-            print(df_filtered.iloc[new[0],:])
-        df_source.selected.on_change('indices',callback_id)
+            ls.append(5)
 
-        return p
+        df_source.selected.on_change('indices',callback_id)
+        res = pn.Column(p,pn.pane.Markdown(str(ls) ))
+        return res
 
     def filter_df(self):
         if 'northing' not in self.house_df.columns:

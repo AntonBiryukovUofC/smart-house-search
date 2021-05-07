@@ -19,17 +19,34 @@ bootstrap = pn.template.BootstrapTemplate(title='Smart House Search')
 pn.config.sizing_mode = "stretch_width"
 pn.extension(raw_css=[CSS_CLASS_CARD])
 
+TOOLTIPS = """
+    <div>
+        <div>
+            <img
+                src="@photo" height="42" alt="@photo" width="42"
+                style="float: left; margin: 0px 15px 15px 0px;"
+                border="2"
+            ></img>
+        </div>
+        <div>
+            <span style="font-size: 12px; font-weight: bold;">@address</span>
+            <span style="font-size: 12px; font-weight: bold;">Size: @size Price: @price</span>
+        </div>
+    </div>
+"""
 
 def pull_redis(redis_client):
     dataframes = []
     listings_honestdoor_addresses = redis_client.smembers('%s:listings_honestdoor' % namespace)
-    for a in tqdm(list(listings_honestdoor_addresses)[:100]):
+    for a in tqdm(list(listings_honestdoor_addresses)[:30]):
         # log.info(a)
         key_to_data = f'{namespace}:listings/{a}'
         log.info(key_to_data)
         listing_data = pd.DataFrame(json.loads(r_dic.redis.get(key_to_data)), index=[a])
         dataframes.append(listing_data)
     df = pd.concat(dataframes)
+    df['photo'] = df['photo_url']
+    df.drop(columns='photo_url',inplace=True)
     return df
 
 namespace = 'house-search'
@@ -40,7 +57,9 @@ class ReactiveDashboard(param.Parameterized):
     pins = param.List(default=[])
     #house_df = get_dummy_house_df()
     house_df = house_df_default
-    tooltips = [("Price", "@price")]
+    tooltips = [("Price", "@price"),
+                ("Photo", "@photo")
+                ]
     hover = HoverTool(tooltips=tooltips)
     price_range = get_price_range()
     minimum_price = param.Selector(objects=list(price_range))

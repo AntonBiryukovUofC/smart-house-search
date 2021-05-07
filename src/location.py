@@ -15,9 +15,11 @@ API_KEY = os.environ["HERE_API_KEY"]
 
 redis = Redis(host=os.getenv("REDIS_HOST", "10.20.40.57"))
 
-def location_id_format(longitude:float, latitude:float):
+
+def location_id_format(longitude: float, latitude: float):
     # this would be a good place to round
     return "long_" + str(longitude) + "_lat_" + str(latitude)
+
 
 class Location:
 
@@ -54,6 +56,13 @@ class Location:
 
     def get_point_of_interest_data(self, location):
         transit_route = transit_routes(self, location)
+        if 'notices' in transit_route:
+            if transit_route['notices'][0][
+                'title'] == 'Routing is not possible due to missing stations in a given range':
+                message = "Ensure locations are in the same city."
+                if self.address is not None:
+                    message = message + " Check that " + self.address + " is a valid location"
+                raise Exception(message)
         time = transit_time(transit_route['routes'][0])
         walk_time = transit_time(walk(self, location)['routes'][0])
         drive_time = transit_time(drive(self, location)['routes'][0])
@@ -76,6 +85,8 @@ def geocode_destination_here(x: str):
     log.info(f"Geocoding query : {x}")
     payload = {"q": x, "apiKey": API_KEY}
     r = requests.get(URL, params=payload)
+    if r.text == '{"items":[]}':
+        raise Exception(x + " is returning an empty result! Consider removing.")
     return r.json()
 
 

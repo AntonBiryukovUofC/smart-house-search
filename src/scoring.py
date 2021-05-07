@@ -103,7 +103,7 @@ def add_custom_commute_score_to_all(walk_weight=1, bike_weight=1, transit_weight
 
     for i in listings:
         k = i.decode()
-        if "latitude" in k or "longitude" in k or "downtown" in k or "/poi/" in k:
+        if "latitude" in k or "longitude" in k or "/downtown" in k or "/poi/" in k or "score" in k:
             pass
             # these keys do not represent a listing
         else:
@@ -121,9 +121,56 @@ def add_custom_commute_score_to_all(walk_weight=1, bike_weight=1, transit_weight
 
                                                                                 data['transit_route']['routes'][0])
                     score = (
-                                        walk_score * walk_weight + bike_score * bike_weight + transit_score * transit_weight + drive_score * drive_weight) / (
-                                        weighted_sum * len(pois))
+                                    walk_score * walk_weight + bike_score * bike_weight + transit_score * transit_weight + drive_score * drive_weight) / (
+                                    weighted_sum * len(pois))
                     redis.set(k + "/custom_commute_score", score)
+            except Exception as e:
+                log.exception(traceback.format_exc())
+
+
+def add_downtown_commute_score_to_all(walk_weight=1, bike_weight=1, transit_weight=1, drive_weight=1):
+    listings = redis.keys('house-search:listings/*')
+    if walk_weight < 0:
+        walk_weight = 1
+        log.info("Reset negative walk weight to 1")
+
+    if bike_weight < 0:
+        bike_weight = 1
+        log.info("Reset negative bike weight to 1")
+
+    if transit_weight < 0:
+        transit_weight = 1
+        log.info("Reset negative transit weight to 1")
+
+    if drive_weight < 0:
+        drive_weight = 1
+        log.info("Reset negative drive weight to 1")
+
+    weighted_sum = walk_weight + bike_weight + transit_weight + drive_weight
+    if weighted_sum <= 0:
+        # Someone entered weird values
+        log.info("Resetting weights due to weighted_sum being <=0")
+        weighted_sum = 4
+        walk_weight = bike_weight = transit_weight = drive_weight = 1
+
+    for i in listings:
+        k = i.decode()
+        if "latitude" in k or "longitude" in k or "/downtown" in k or "/poi/" in k or "score" in k:
+            pass
+            # these keys do not represent a listing
+        else:
+            try:
+                walk_score = bike_score = transit_score = drive_score = 0
+                data = ast.literal_eval(redis.get(k+'/downtown').decode())
+                walk_score = walk_score + calculate_walk_score(data['walk_time'])
+                bike_score = bike_score + calculate_bike_score(data['bike_time'])
+                drive_score = drive_score + calculate_drive_score(data['drive_time'])
+                transit_score = transit_score + calculate_transit_score(data['transit_time'],
+                                                                        data['transit_route']['routes'][0])
+                score = (
+                                walk_score * walk_weight + bike_score * bike_weight + transit_score * transit_weight + drive_score * drive_weight) / (
+                            weighted_sum)
+                redis.set(k + "/downtown_commute_score", score)
             except Exception as e:
                 log.exception(traceback.format_exc())
 
@@ -160,16 +207,55 @@ def add_custom_commute_score_to_one(location, walk_weight=1, bike_weight=1, tran
             for place in pois:
                 str_place = place.decode()
                 data = ast.literal_eval(redis.get(str_place).decode())
-                walk_score = walk_score+calculate_walk_score(data['walk_time'])
-                bike_score = bike_score+calculate_bike_score(data['bike_time'])
-                drive_score = drive_score+calculate_drive_score(data['drive_time'])
-                transit_score = transit_score+calculate_transit_score(data['transit_time'],
-                                                                    data['transit_route']['routes'][0])
+                walk_score = walk_score + calculate_walk_score(data['walk_time'])
+                bike_score = bike_score + calculate_bike_score(data['bike_time'])
+                drive_score = drive_score + calculate_drive_score(data['drive_time'])
+                transit_score = transit_score + calculate_transit_score(data['transit_time'],
+                                                                        data['transit_route']['routes'][0])
             score = (
-                        walk_score * walk_weight + bike_score * bike_weight + transit_score * transit_weight + drive_score * drive_weight) / (
-                        weighted_sum * len(pois))
-            print(score)
+                            walk_score * walk_weight + bike_score * bike_weight + transit_score * transit_weight + drive_score * drive_weight) / (
+                            weighted_sum * len(pois))
             redis.set(location.listing_key + "/custom_commute_score", score)
+        except Exception as e:
+            log.exception(traceback.format_exc())
+
+def add_downtown_commute_score_to_one(location, walk_weight=1, bike_weight=1, transit_weight=1, drive_weight=1):
+    listings = redis.keys('house-search:listings/*')
+    if walk_weight < 0:
+        walk_weight = 1
+        log.info("Reset negative walk weight to 1")
+
+    if bike_weight < 0:
+        bike_weight = 1
+        log.info("Reset negative bike weight to 1")
+
+    if transit_weight < 0:
+        transit_weight = 1
+        log.info("Reset negative transit weight to 1")
+
+    if drive_weight < 0:
+        drive_weight = 1
+        log.info("Reset negative drive weight to 1")
+
+    weighted_sum = walk_weight + bike_weight + transit_weight + drive_weight
+    if weighted_sum <= 0:
+        # Someone entered weird values
+        log.info("Resetting weights due to weighted_sum being <=0")
+        weighted_sum = 4
+        walk_weight = bike_weight = transit_weight = drive_weight = 1
+
+        try:
+            walk_score = bike_score = transit_score = drive_score = 0
+            data = ast.literal_eval(redis.get(location.listing_key+"/downtowm").decode())
+            walk_score = walk_score + calculate_walk_score(data['walk_time'])
+            bike_score = bike_score + calculate_bike_score(data['bike_time'])
+            drive_score = drive_score + calculate_drive_score(data['drive_time'])
+            transit_score = transit_score + calculate_transit_score(data['transit_time'],
+                                                                        data['transit_route']['routes'][0])
+            score = (
+                            walk_score * walk_weight + bike_score * bike_weight + transit_score * transit_weight + drive_score * drive_weight) / (
+                            weighted_sum)
+            redis.set(location.listing_key + "/downtown_commute_score", score)
         except Exception as e:
             log.exception(traceback.format_exc())
 
@@ -177,6 +263,7 @@ def add_custom_commute_score_to_one(location, walk_weight=1, bike_weight=1, tran
 def main():
     # default behaviour is to add to all
     add_custom_commute_score_to_all()
+    add_downtown_commute_score_to_all()
 
 
 if __name__ == "__main__":

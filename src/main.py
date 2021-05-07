@@ -128,9 +128,9 @@ class ReactiveDashboard(param.Parameterized):
                                default=(0, 7), bounds=(0, 7))
     bathrooms_slider = param.Range(label='Bathrooms',
                                    default=(0, 7), bounds=(0, 7))
-    type = param.ListSelector(label='Type of property',
+    type_box = param.ListSelector(label='Type of property',
                               default=options['type'], objects=options['type'])
-    transit_time = param.Range(label='Transit time [mins]',
+    dt_slider = param.Range(label='Commute to Downtown score',
                                default=(0, options['transit_time_max']), bounds=(0, options['transit_time_max']))
 
     map_background = hv.element.tiles.OSM().opts(width=600, height=550)
@@ -154,6 +154,10 @@ class ReactiveDashboard(param.Parameterized):
             (df_filtered['bedrooms'] <= self.rooms_slider[1]) & (df_filtered['bedrooms'] >= self.rooms_slider[0])]
         df_filtered = df_filtered[
             (df_filtered['bathrooms'] <= self.rooms_slider[1]) & (df_filtered['bathrooms'] >= self.rooms_slider[0])]
+        df_filtered = df_filtered[
+            (df_filtered['Downtown Commute'] <= self.dt_slider[1]) & (df_filtered['Downtown Commute'] >= self.dt_slider[0])]
+        df_filtered = df_filtered[df_filtered['type'].isin(self.type[1])]
+
         # Create a bokeh figure and source here:
 
         # range bounds supplied in web mercator coordinates

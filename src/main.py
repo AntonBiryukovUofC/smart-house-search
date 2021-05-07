@@ -5,7 +5,7 @@ import pandas as pd
 import panel as pn
 import param
 from bokeh.models import HoverTool
-from holoviews.util.transform import lon_lat_to_easting_northing
+from holoviews.util.transform import lon_lat_to_easting_northing, easting_northing_to_lon_lat
 from redis_dict import RedisDict
 from tqdm import tqdm
 from loguru import logger as log
@@ -69,6 +69,7 @@ house_df_default = pull_redis(r_dic.redis)
 class ReactiveDashboard(param.Parameterized):
     title = pn.pane.Markdown("# Smart House Search")
     pins = param.List(default=[])
+    lat_longs = param.List(default=[])
     # house_df = get_dummy_house_df()
     house_df = house_df_default
     hover = HoverTool(tooltips=TOOLTIPS)
@@ -108,7 +109,7 @@ class ReactiveDashboard(param.Parameterized):
                                                                                                                    width=600,
                                                                                                                    height=550)
         if self.pins:
-            pin_points = hv.Points(self.pins).opts(color='r', size=20, alpha=0.7)
+            pin_points = hv.Points(self.pins).opts(color='r', size=10, alpha=0.7)
             return self.map_background * house_points * pin_points
         else:
             return self.map_background * house_points
@@ -129,7 +130,15 @@ class ReactiveDashboard(param.Parameterized):
         return display_df[['photo', 'price','DateSold','PriceLastSold','Assessment Price',
                            'bedrooms', 'bathrooms', 'size', 'lot_size', 'type', 'stories']]
 
-    @pn.depends("stream")
+    @pn.depends("stream", watch=False)
+    def distance_df(self, x, y):
+        lat = easting_northing_to_lon_lat(x, y)[1]
+        long = easting_northing_to_lon_lat(x, y)[0]
+        self.lat_longs.append(['enter name', lat, long])
+        df = pd.DataFrame(self.lat_longs, columns=['Name', 'Latitude', 'Longitude']).dropna().style.hide_index()
+        return pn.widgets.Tabulator(df.data, pagination='remote', page_size=10, sizing_mode='scale_both', show_index=False)
+
+    @pn.depends("stream", "pins")
     def location(self, x, y):
         if x and y:
             self.pins.append([x, y])
@@ -148,14 +157,22 @@ class ReactiveDashboard(param.Parameterized):
             'photo': HTMLTemplateFormatter(template=image_format)
         }
 
-        df_widget = pn.widgets.Tabulator(self.filter_df(), pagination='remote', page_size=10, formatters=tabulator_formatters, sizing_mode='scale_both')
+        df_widget = pn.widgets.Tabulator(self.filter_df(), pagination='remote', page_size=10,
+                                         formatters=tabulator_formatters, sizing_mode='scale_both')
         df_widget.add_filter(self.param.price_slider, 'price')
         df_widget.add_filter(self.param.rooms_slider, 'bedrooms')
 
+        # df_pins = pn.widgets.Tabulator(self.distance_df(), pagination='remote', page_size=10, sizing_mode='scale_both')
+
         layout = pn.Row(
-            pn.Card(pn.bind(self.location, x=self.stream.param.x, y=self.stream.param.y), title="Map", sizing_mode='stretch_height'),
+            pn.Card(pn.bind(self.location, x=self.stream.param.x, y=self.stream.param.y), title="Map",
+                    sizing_mode='stretch_height'),
             pn.Column(pn.Card(df_widget, title="Properties", sizing_mode='scale_both'))
         )
+
+        result.sidebar.append(pn.Card(pn.bind(self.distance_df, x=self.stream.param.x, y=self.stream.param.y),
+                              title="Pins", sizing_mode='scale_both'))
+
         bootstrap.main.append(layout)
 
         return result

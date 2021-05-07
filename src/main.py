@@ -44,7 +44,7 @@ def pull_redis(redis_client):
     dataframes = []
     listings_honestdoor_addresses = redis_client.smembers('%s:listings_honestdoor' % namespace)
     # Pull realtorca records
-    for a in tqdm(list(listings_honestdoor_addresses)[:5]):
+    for a in tqdm(list(listings_honestdoor_addresses)[:100]):
         # log.info(a)
         key_to_data = f'{namespace}:listings/{a}'
         key_to_hd_data = f'{namespace}:listings_honestdoor/{a}'
@@ -266,7 +266,15 @@ class ReactiveDashboard(param.Parameterized):
             pn.Column(pn.Card(df_widget, title="Properties", sizing_mode='scale_both'))
         )
 
+        details_table = {}
+        details_table['widget'] = pn.pane.Markdown('# daniel')
 
+        def callback(event):
+            print('test')
+            # details_table['widget'] = format_details(df_filtered.iloc[[df_source.selected.indices[0]], :])
+            details_table['widget'] = pn.pane.Markdown('# anton')
+
+        map_plot().on_event('tap', callback)
 
         result.sidebar.append(pn.Card(pn.bind(self.distance_df, x=self.stream.param.x, y=self.stream.param.y),
                                       title="Pins", sizing_mode='scale_both'))
@@ -275,11 +283,7 @@ class ReactiveDashboard(param.Parameterized):
 
         df_tmp = self.house_df.copy()[self.house_df['address'] == self.house_df['address'][0]]
         details_table['widget'] = format_details(df_tmp.iloc[[0], :])
-        # df_tmp = df_tmp.set_index('address')
-        # a = df_tmp['photo']
-        # df_tmp.drop(labels=['photo'], axis=1, inplace=True)
-        # df_tmp.insert(0, 'photo', a)
-
+        bootstrap.main.append(pn.Card(details_table['widget'], title='Details'))
 
         return result
 

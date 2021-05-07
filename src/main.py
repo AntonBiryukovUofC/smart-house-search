@@ -35,7 +35,8 @@ TOOLTIPS = """
         </div>
     </div>
 """
-HONESTDOOR_COLS = ['DateSold','PriceLastSold','property_id','Assessment Price']
+HONESTDOOR_COLS = ['DateSold', 'PriceLastSold', 'property_id', 'Assessment Price']
+
 
 def pull_redis(redis_client):
     dataframes = []
@@ -48,9 +49,22 @@ def pull_redis(redis_client):
         log.info(key_to_data)
         listing_data = pd.DataFrame(json.loads(r_dic.redis.get(key_to_data)), index=[a])
         honestdoor_data = pd.read_json(r_dic.redis.get(key_to_hd_data))
+        # Calculated score data
+        score_data = {'Downtown Commute': round(float(redis_client.get(key_to_data + "/downtown_commute_score")), 2)}
+        custom_score = redis_client.get(key_to_data + "/custom_commute_score")
+
+        # if this isn't set could consider calculating
+        if custom_score:
+            score_data['Custom Commute'] = round(float(redis_client.get(key_to_data + "/custom_commute_score")), 2)
+        score_pd = pd.DataFrame(score_data, index=[a])
+
+        # travel info for downtown
+        downtown_travel = {'Downtown Travel': redis_client.get(key_to_data + "/downtown")}
+        dt_pd=pd.DataFrame(downtown_travel, index=[a])
+
         honestdoor_data.columns = HONESTDOOR_COLS
         honestdoor_data.index = [a] * honestdoor_data.shape[0]
-        merged_data = pd.concat([listing_data,honestdoor_data.head(1)],axis=1)
+        merged_data = pd.concat([listing_data, honestdoor_data.head(1), score_pd, dt_pd], axis=1)
         dataframes.append(merged_data)
     df = pd.concat(dataframes)
     df['photo'] = df['photo_url']
@@ -59,9 +73,7 @@ def pull_redis(redis_client):
 
     df.drop(columns='photo_url', inplace=True)
 
-
     return df
-
 
 
 namespace = 'house-search'
@@ -107,11 +119,11 @@ class ReactiveDashboard(param.Parameterized):
 
         house_points = hv.Points(df_filtered, ['easting', 'northing'],
                                  ['price', 'photo', 'address', 'size']).opts(tools=[self.hover, 'tap'],
-                                                                                                                   alpha=0.99,
-                                                                                                                   hover_fill_alpha=0.99, size=15,
-                                                                                                                   hover_fill_color='firebrick',
-                                                                                                                   width=600,
-                                                                                                                   height=550)
+                                                                             alpha=0.99,
+                                                                             hover_fill_alpha=0.99, size=15,
+                                                                             hover_fill_color='firebrick',
+                                                                             width=600,
+                                                                             height=550)
         if self.pins:
             pin_points = hv.Points(self.pins).opts(color='r', size=10, alpha=0.7)
             return self.map_background * house_points * pin_points
@@ -130,9 +142,15 @@ class ReactiveDashboard(param.Parameterized):
                 display_df = display_df.drop(columns=col, axis=1)
         display_df['size'] = display_df['size'].apply(lambda x: x.split()[0] if x else -999).astype(float)
         display_df = display_df.set_index('address')
+        if 'Custom Commute' in display_df:
+            ret = display_df[['photo', 'price', 'DateSold', 'PriceLastSold', 'Assessment Price',
+                              'bedrooms', 'bathrooms', 'size', 'lot_size', 'type', 'stories', 'Custom Commute',
+                              'Downtown Commute']]
+        else:
+            ret = display_df[['photo', 'price', 'DateSold', 'PriceLastSold', 'Assessment Price',
+                              'bedrooms', 'bathrooms', 'size', 'lot_size', 'type', 'stories', 'Downtown Commute']]
 
-        return display_df[['photo', 'price','DateSold','PriceLastSold','Assessment Price',
-                           'bedrooms', 'bathrooms', 'size', 'lot_size', 'type', 'stories']]
+        return ret
 
     @pn.depends("stream", watch=False)
     def distance_df(self, x, y):
@@ -140,7 +158,8 @@ class ReactiveDashboard(param.Parameterized):
         long = easting_northing_to_lon_lat(x, y)[0]
         self.lat_longs.append(['enter name', lat, long])
         df = pd.DataFrame(self.lat_longs, columns=['Name', 'Latitude', 'Longitude']).dropna().style.hide_index()
-        return pn.widgets.Tabulator(df.data, pagination='remote', page_size=10, sizing_mode='scale_both', show_index=False)
+        return pn.widgets.Tabulator(df.data, pagination='remote', page_size=10, sizing_mode='scale_both',
+                                    show_index=False)
 
     @pn.depends("stream", "pins")
     def location(self, x, y):
@@ -175,7 +194,7 @@ class ReactiveDashboard(param.Parameterized):
         )
 
         result.sidebar.append(pn.Card(pn.bind(self.distance_df, x=self.stream.param.x, y=self.stream.param.y),
-                              title="Pins", sizing_mode='scale_both'))
+                                      title="Pins", sizing_mode='scale_both'))
 
         bootstrap.main.append(layout)
 

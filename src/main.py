@@ -44,7 +44,7 @@ def pull_redis(redis_client):
     dataframes = []
     listings_honestdoor_addresses = redis_client.smembers('%s:listings_honestdoor' % namespace)
     # Pull realtorca records
-    for a in tqdm(list(listings_honestdoor_addresses)[:100]):
+    for a in tqdm(list(listings_honestdoor_addresses)[:10]):
         # log.info(a)
         key_to_data = f'{namespace}:listings/{a}'
         key_to_hd_data = f'{namespace}:listings_honestdoor/{a}'
@@ -164,7 +164,7 @@ class ReactiveDashboard(param.Parameterized):
             (df_filtered['bathrooms'] <= self.rooms_slider[1]) & (df_filtered['bathrooms'] >= self.rooms_slider[0])]
         df_filtered = df_filtered[
             (df_filtered['Downtown Commute'] <= self.dt_slider[1]) & (df_filtered['Downtown Commute'] >= self.dt_slider[0])]
-        df_filtered = df_filtered[df_filtered['type'].isin(self.type[1])]
+        df_filtered = df_filtered[df_filtered['type'].isin(self.type_box)]
 
         # Create a bokeh figure and source here:
 
@@ -244,8 +244,8 @@ class ReactiveDashboard(param.Parameterized):
         result.sidebar.append(price_slider)
         result.sidebar.append(self.param.rooms_slider)
         result.sidebar.append(self.param.bathrooms_slider)
-        result.sidebar.append(self.param.type)
-        result.sidebar.append(self.param.transit_time)
+        result.sidebar.append(self.param.type_box)
+        result.sidebar.append(self.param.dt_slider)
 
         image_format = r'<div> <img src="<%= value %>" height="70" alt="<%= value %>" width="70" style="float: left; margin: 0px 15px 15px 0px;" border="2" ></img> </div>'
         tabulator_formatters = {

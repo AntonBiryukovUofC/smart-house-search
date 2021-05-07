@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import panel as pn
 import param
-from bokeh.models import HoverTool, ResetTool, PanTool, WheelZoomTool, ColumnDataSource
+from bokeh.models import HoverTool, ResetTool, PanTool, WheelZoomTool, ColumnDataSource, TapTool, Circle
 from bokeh.plotting import figure
 from holoviews.util.transform import lon_lat_to_easting_northing, easting_northing_to_lon_lat
 from redis_dict import RedisDict
@@ -43,7 +43,7 @@ def pull_redis(redis_client):
     dataframes = []
     listings_honestdoor_addresses = redis_client.smembers('%s:listings_honestdoor' % namespace)
     # Pull realtorca records
-    for a in tqdm(list(listings_honestdoor_addresses)[:10]):
+    for a in tqdm(list(listings_honestdoor_addresses)[:5]):
         # log.info(a)
         key_to_data = f'{namespace}:listings/{a}'
         key_to_hd_data = f'{namespace}:listings_honestdoor/{a}'
@@ -152,16 +152,27 @@ class ReactiveDashboard(param.Parameterized):
         circle_renderer = p.circle(x='easting', y='northing',
                                    fill_color='midnightblue',
                                    fill_alpha=0.95,
-                                   line_color='dodgersblue',
                                    hover_fill_color='firebrick',
                                    line_alpha=0.91,
                                    source=df_source,
                                    size=10,
                                    # hover_line_color='black',
                                    line_width=0)
+        circle_renderer.selection_glyph = Circle(fill_color="firebrick", line_color=None)
+        circle_renderer.nonselection_glyph = Circle(fill_color="midnightblue", line_color=None)
         tool_circle_hover = HoverTool(renderers=[circle_renderer],
                                       tooltips=TOOLTIPS)
+        tool_circle_tap = TapTool(renderers=[circle_renderer])
         p.add_tools(tool_circle_hover)
+        p.add_tools(tool_circle_tap)
+
+
+
+        def callback_id(attr, old, new):
+            print('Indices Hello!')
+            print(df_filtered.iloc[new[0],:])
+        df_source.selected.on_change('indices',callback_id)
+
         return p
 
     def filter_df(self):

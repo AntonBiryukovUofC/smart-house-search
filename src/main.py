@@ -19,7 +19,7 @@ pn.config.sizing_mode = "stretch_width"
 pn.extension(raw_css=[CSS_CLASS_CARD])
 
 TOOLTIPS = """
-    <div>
+    <div width="520" style="width:350px;">
         <div>
             <img
                 src="@photo" height="128" alt="@photo" width="128"
@@ -41,7 +41,7 @@ def pull_redis(redis_client):
     dataframes = []
     listings_honestdoor_addresses = redis_client.smembers('%s:listings_honestdoor' % namespace)
     # Pull realtorca records
-    for a in tqdm(list(listings_honestdoor_addresses)[:30]):
+    for a in tqdm(list(listings_honestdoor_addresses)[:10]):
         # log.info(a)
         key_to_data = f'{namespace}:listings/{a}'
         key_to_hd_data = f'{namespace}:listings_honestdoor/{a}'
@@ -51,10 +51,12 @@ def pull_redis(redis_client):
         honestdoor_data.columns = HONESTDOOR_COLS
         honestdoor_data.index = [a] * honestdoor_data.shape[0]
         merged_data = pd.concat([listing_data,honestdoor_data.head(1)],axis=1)
-        print(merged_data.T)
         dataframes.append(merged_data)
     df = pd.concat(dataframes)
     df['photo'] = df['photo_url']
+    df['DateSold'] = df['DateSold'].dt.date
+    df['address'] = df['address'].apply(lambda x: x.split('|')[0])
+
     df.drop(columns='photo_url', inplace=True)
 
 
@@ -72,6 +74,7 @@ class ReactiveDashboard(param.Parameterized):
     # house_df = get_dummy_house_df()
     house_df = house_df_default
     hover = HoverTool(tooltips=TOOLTIPS)
+
     price_range = get_price_range()
     minimum_price = param.Selector(objects=list(price_range))
     maximum_price = param.Selector(objects=list(price_range), default=price_range[-1])
@@ -101,7 +104,8 @@ class ReactiveDashboard(param.Parameterized):
         df_filtered = df_filtered[
             (df_filtered['bathrooms'] <= self.rooms_slider[1]) & (df_filtered['bathrooms'] >= self.rooms_slider[0])]
 
-        house_points = hv.Points(df_filtered, ['easting', 'northing'], ['price', 'photo', 'address', 'size']).opts(tools=[self.hover, 'tap'],
+        house_points = hv.Points(df_filtered, ['easting', 'northing'],
+                                 ['price', 'photo', 'address', 'size']).opts(tools=[self.hover, 'tap'],
                                                                                                                    alpha=0.99,
                                                                                                                    hover_fill_alpha=0.99, size=15,
                                                                                                                    hover_fill_color='firebrick',

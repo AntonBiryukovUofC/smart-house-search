@@ -13,7 +13,7 @@ class Downtown:
 
     dt = geocode_destination_here("Downtown, Calgary, AB")
     dt_loc = Location(dt)
-    redis = Redis(host= os.getenv("REDIS_HOST", "10.20.40.57"))
+    redis = Redis(host=os.getenv("REDIS_HOST", "10.20.40.57"))
 
     def add_downtown_to_all(self):
         listings = self.redis.keys('house-search:listings/*')
@@ -24,7 +24,7 @@ class Downtown:
             else:
                 try:
                     if self.redis.get(k + "/downtown") is None:
-                        l = location_from_listing(k, redis)
+                        l = location_from_listing(k, self.redis)
                         data = l.get_point_of_interest_data(self.dt_loc)
                         self.redis.set(k + "/downtown", str(data['commute']))
                 except Exception as e:
@@ -36,6 +36,4 @@ class Downtown:
             self.redis.set(location.listing_key + "/downtown", str(data['commute']))
         except Exception as e:
             print(e)
-
-
 

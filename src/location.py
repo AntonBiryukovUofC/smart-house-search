@@ -10,13 +10,13 @@ log.setLevel(logging.DEBUG)
 
 URL = "https://geocode.search.hereapi.com/v1/geocode"
 
-API_KEY = 'aUY3h_Sn9vkKysEZEPocLaUGWO5LRluONJGlPY7iL9w'
+API_KEY = os.environ["HERE_API_KEY"]
 
 
 class Location:
 
     def __init__(self, response: dict = None, longitude=None, latitude=None, listing_key=None):
-        if response is None:
+        if response is not None:
             if 'id' in response['items'][0]:
                 self.hereid = response['items'][0]['id']
             self.address = response['items'][0]['title']
@@ -28,7 +28,7 @@ class Location:
             self.longitude=longitude
             self.latitude=latitude
 
-        self.listing_key=None
+        self.listing_key=listing_key
 
     def add_point_of_interest(self, location):
         transit_route = transit_routes(self, location)

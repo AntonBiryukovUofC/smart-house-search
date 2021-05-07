@@ -27,7 +27,7 @@ def add_downtown_to_all():
     logging.info("Checking downtown data for "+str(len(listings))+" potential listings")
     for i in listings:
         k = i.decode()
-        if "latitude" in k or "longitude" in k or "downtown" in k or "/poi/" in k:
+        if "latitude" in k or "longitude" in k or "/downtown" in k or "/poi/" in k or "score" in k:
             pass
             # these keys do not represent a listing
         else:

@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import panel as pn
 import param
-from bokeh.models import HoverTool, ResetTool, PanTool, WheelZoomTool, ColumnDataSource, TapTool
+from bokeh.models import HoverTool, ResetTool, PanTool, WheelZoomTool, ColumnDataSource, TapTool, Circle
 from bokeh.plotting import figure
 from holoviews.util.transform import lon_lat_to_easting_northing, easting_northing_to_lon_lat
 from redis_dict import RedisDict
@@ -44,18 +44,30 @@ def pull_redis(redis_client):
     dataframes = []
     listings_honestdoor_addresses = redis_client.smembers('%s:listings_honestdoor' % namespace)
     # Pull realtorca records
-    for a in tqdm(list(listings_honestdoor_addresses)[:10]):
+    for a in tqdm(list(listings_honestdoor_addresses)[:5]):
         # log.info(a)
         key_to_data = f'{namespace}:listings/{a}'
         key_to_hd_data = f'{namespace}:listings_honestdoor/{a}'
         log.info(key_to_data)
 
-
         listing_data = pd.DataFrame(json.loads(r_dic.redis.get(key_to_data)), index=[a])
         honestdoor_data = pd.read_json(r_dic.redis.get(key_to_hd_data))
+        # Calculated score data
+        score_data = {'Downtown Commute': round(float(redis_client.get(key_to_data + "/downtown_commute_score")), 2)}
+        custom_score = redis_client.get(key_to_data + "/custom_commute_score")
+
+        # if this isn't set could consider calculating
+        if custom_score:
+            score_data['Custom Commute'] = round(float(redis_client.get(key_to_data + "/custom_commute_score")), 2)
+        score_pd = pd.DataFrame(score_data, index=[a])
+
+        # travel info for downtown
+        downtown_travel = {'Downtown Travel': redis_client.get(key_to_data + "/downtown")}
+        dt_pd = pd.DataFrame(downtown_travel, index=[a])
+
         honestdoor_data.columns = HONESTDOOR_COLS
         honestdoor_data.index = [a] * honestdoor_data.shape[0]
-        merged_data = pd.concat([listing_data, honestdoor_data.head(1)], axis=1)
+        merged_data = pd.concat([listing_data, honestdoor_data.head(1), score_pd, dt_pd], axis=1)
         dataframes.append(merged_data)
     df = pd.concat(dataframes)
     df['photo'] = df['photo_url']
@@ -76,12 +88,28 @@ options['price_min'] = house_df_default['price'].min()
 
 options['transit_time_max'] = 180
 
+
+def format_details(df):
+    df = df.set_index('address')
+    a = df['photo']
+    df.drop(labels=['photo'], axis=1, inplace=True)
+    df.insert(0, 'photo', a)
+    df = df.drop(columns=['detail_url', 'lat', 'long', 'id', 'mls_number', 'key', 'easting', 'northing'])
+    image_format = r'<div> <img src="<%= value %>" height="100" alt="<%= value %>" width="100" style="float: left; margin: 0px 15px 15px 0px;" border="2" ></img> </div>'
+    tabulator_formatters_details = {
+        'price': NumberFormatter(format='$0,0'),
+        'size': NumberFormatter(format='0,0 sqft'),
+        'photo': HTMLTemplateFormatter(template=image_format)
+    }
+    return pn.widgets.Tabulator(df, formatters=tabulator_formatters_details, sizing_mode='scale_both')
+
+
 class ReactiveDashboard(param.Parameterized):
     title = pn.pane.Markdown("# Smart House Search")
     pins = param.List(default=[])
     lat_longs = param.List(default=[])
     # house_df = get_dummy_house_df()
-    df_clean = pd.DataFrame([])
+    details_table = pn.pane.Markdown('')
     house_df = house_df_default
     hover = HoverTool(tooltips=TOOLTIPS)
     # details_area = pn.pane.Markdown("# Details")
@@ -93,12 +121,12 @@ class ReactiveDashboard(param.Parameterized):
                                )
     rooms_slider = param.Range(label='Bedrooms',
                                default=(0, 7), bounds=(0, 7))
-    bathrooms_slider = param.Range(label = 'Bathrooms',
+    bathrooms_slider = param.Range(label='Bathrooms',
                                    default=(0, 7), bounds=(0, 7))
     type = param.ListSelector(label='Type of property',
                               default=options['type'], objects=options['type'])
     transit_time = param.Range(label='Transit time [mins]',
-                               default = (0,options['transit_time_max']), bounds=(0, options['transit_time_max']))
+                               default=(0, options['transit_time_max']), bounds=(0, options['transit_time_max']))
 
     map_background = hv.element.tiles.OSM().opts(width=600, height=550)
     stream = hv.streams.Tap(source=map_background, x=np.nan, y=np.nan)
@@ -124,11 +152,11 @@ class ReactiveDashboard(param.Parameterized):
         # Create a bokeh figure and source here:
 
         # range bounds supplied in web mercator coordinates
-        xrange = (df_filtered['easting'].round(decimals=2).min(),
-                  df_filtered['easting'].round(decimals=2).max())
-        yrange = (df_filtered['northing'].round(decimals=2).min(),
-                  df_filtered['northing'].round(decimals=2).max())
-        df_source = ColumnDataSource(df_filtered.reindex())
+        xrange = (df_filtered['easting'].round(decimals=2).min() * 0.999,
+                  df_filtered['easting'].round(decimals=2).max() * 1.001)
+        yrange = (df_filtered['northing'].round(decimals=2).min() * 0.999,
+                  df_filtered['northing'].round(decimals=2).max() * 1.001)
+        df_source = ColumnDataSource(df_filtered)
         tools = [ResetTool(), PanTool(), WheelZoomTool()]
         p = figure(x_range=xrange,
                    y_range=yrange,
@@ -140,33 +168,40 @@ class ReactiveDashboard(param.Parameterized):
         circle_renderer = p.circle(x='easting', y='northing',
                                    fill_color='midnightblue',
                                    fill_alpha=0.95,
-                                   line_color='dodgersblue',
                                    hover_fill_color='firebrick',
                                    line_alpha=0.91,
                                    source=df_source,
                                    size=10,
                                    # hover_line_color='black',
                                    line_width=0)
+        circle_renderer.selection_glyph = Circle(fill_color="firebrick", line_color=None)
+        circle_renderer.nonselection_glyph = Circle(fill_color="midnightblue", line_color=None)
         tool_circle_hover = HoverTool(renderers=[circle_renderer],
                                       tooltips=TOOLTIPS)
         tool_circle_tap = TapTool(renderers=[circle_renderer])
         p.add_tools(tool_circle_hover)
         p.add_tools(tool_circle_tap)
 
-        def callback(event):
-            i = df_source.selected.indices[0]
-            df = df_filtered[df_filtered['address'] == df_filtered['address'].iloc[i]]
-            print(df)
-
+        details_table = {}
+        details_table['widget'] = pn.pane.Markdown('# daniel')
 
         # def callback_id(attr, old, new):
         #     print('Indices Hello!')
-        #     print(df_source.selected.indices)
+        #     print(df_filtered.iloc[[new[0]], :])
+        #     details_table = format_details(df_filtered.iloc[[new[0]], :])
+
+        def callback(event):
+            print('test')
+            # details_table['widget'] = format_details(df_filtered.iloc[[df_source.selected.indices[0]], :])
+            details_table['widget'] = pn.pane.Markdown('# anton')
 
         p.on_event('tap', callback)
-        # df_source.selected.on_change('indices', callback_id)
 
-        return p
+        # df_source.selected.on_change('indices', callback)
+
+        return pn.Column(p, details_table['widget'])
+
+
 
     def filter_df(self):
         if 'northing' not in self.house_df.columns:
@@ -180,9 +215,15 @@ class ReactiveDashboard(param.Parameterized):
                 display_df = display_df.drop(columns=col, axis=1)
         display_df['size'] = display_df['size'].apply(lambda x: x.split()[0] if x else -999).astype(float)
         display_df = display_df.set_index('address')
+        if 'Custom Commute' in display_df:
+            ret = display_df[['photo', 'price', 'DateSold', 'PriceLastSold', 'Assessment Price',
+                              'bedrooms', 'bathrooms', 'size', 'lot_size', 'type', 'stories', 'Custom Commute',
+                              'Downtown Commute']]
+        else:
+            ret = display_df[['photo', 'price', 'DateSold', 'PriceLastSold', 'Assessment Price',
+                              'bedrooms', 'bathrooms', 'size', 'lot_size', 'type', 'stories', 'Downtown Commute']]
 
-        return display_df[['photo', 'price', 'DateSold', 'PriceLastSold', 'Assessment Price',
-                           'bedrooms', 'bathrooms', 'size', 'lot_size', 'type', 'stories']]
+        return ret
 
     @pn.depends("stream", watch=False)
     def distance_df(self, x, y):
@@ -199,29 +240,14 @@ class ReactiveDashboard(param.Parameterized):
             self.pins.append([x, y])
         return self.house_plot
 
-    def format_details(self, df):
-        df = df.set_index('address')
-        a = df['photo']
-        df.drop(labels=['photo'], axis=1, inplace=True)
-        df.insert(0, 'photo', a)
-        df = df.drop(columns=['detail_url', 'lat', 'long', 'id', 'mls_number', 'key', 'easting', 'northing'])
-        image_format = r'<div> <img src="<%= value %>" height="100" alt="<%= value %>" width="100" style="float: left; margin: 0px 15px 15px 0px;" border="2" ></img> </div>'
-        tabulator_formatters_details = {
-            'price': NumberFormatter(format='$0,0'),
-            'size': NumberFormatter(format='0,0 sqft'),
-            'photo': HTMLTemplateFormatter(template=image_format)
-        }
-        return pn.widgets.Tabulator(df, formatters=tabulator_formatters_details, sizing_mode='scale_both')
-
     def panel(self):
         result = bootstrap
-        price_slider = pn.widgets.RangeSlider.from_param(self.param.price_slider, step=10000,format='0.0a')
+        price_slider = pn.widgets.RangeSlider.from_param(self.param.price_slider, step=10000, format='0.0a')
         result.sidebar.append(price_slider)
         result.sidebar.append(self.param.rooms_slider)
         result.sidebar.append(self.param.bathrooms_slider)
         result.sidebar.append(self.param.type)
         result.sidebar.append(self.param.transit_time)
-
 
         image_format = r'<div> <img src="<%= value %>" height="70" alt="<%= value %>" width="70" style="float: left; margin: 0px 15px 15px 0px;" border="2" ></img> </div>'
         tabulator_formatters = {
@@ -243,17 +269,19 @@ class ReactiveDashboard(param.Parameterized):
             pn.Column(pn.Card(df_widget, title="Properties", sizing_mode='scale_both'))
         )
 
+
+
         result.sidebar.append(pn.Card(pn.bind(self.distance_df, x=self.stream.param.x, y=self.stream.param.y),
                                       title="Pins", sizing_mode='scale_both'))
 
         bootstrap.main.append(layout)
-        df_tmp = self.house_df[self.house_df['address'] == self.house_df['address'][0]]
+        # df_tmp = self.house_df[self.house_df['address'] == self.house_df['address'][0]]
         # df_tmp = df_tmp.set_index('address')
         # a = df_tmp['photo']
         # df_tmp.drop(labels=['photo'], axis=1, inplace=True)
         # df_tmp.insert(0, 'photo', a)
 
-        bootstrap.main.append(pn.Card(self.house_plot.callback, title='Details'))
+        # bootstrap.main.append(pn.Card(self.details_table, title='Details'))
 
         return result
 

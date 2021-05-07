@@ -91,7 +91,7 @@ options['type'] = list(house_df_default['type'].unique())
 options['price_max'] = house_df_default['price'].max()
 options['price_min'] = house_df_default['price'].min()
 
-options['transit_time_max'] = 180
+options['transit_time_max'] = 10
 
 
 def format_details(df):
@@ -150,7 +150,7 @@ class ReactiveDashboard(param.Parameterized):
         self.house_df['northing'] = self.house_df.apply(lambda x: lon_lat_to_easting_northing(x['long'], x['lat'])[1],
                                                         axis=1)
 
-    @pn.depends('price_slider', 'rooms_slider', 'bathrooms_slider', 'pins', watch=False)
+    @pn.depends('price_slider', 'rooms_slider', 'bathrooms_slider', 'pins','dt_slider','type_box', watch=False)
     def house_plot(self):
 
         if 'northing' not in self.house_df.columns:

@@ -22,7 +22,7 @@ TOOLTIPS = """
     <div>
         <div>
             <img
-                src="@photo" height="70" alt="@photo" width="70"
+                src="@photo" height="128" alt="@photo" width="128"
                 style="float: left; margin: 0px 15px 15px 0px;"
                 border="2"
             ></img>
@@ -35,21 +35,31 @@ TOOLTIPS = """
         </div>
     </div>
 """
-
+HONESTDOOR_COLS = ['DateSold','PriceLastSold','property_id','Assessment Price']
 
 def pull_redis(redis_client):
     dataframes = []
     listings_honestdoor_addresses = redis_client.smembers('%s:listings_honestdoor' % namespace)
+    # Pull realtorca records
     for a in tqdm(list(listings_honestdoor_addresses)[:30]):
         # log.info(a)
         key_to_data = f'{namespace}:listings/{a}'
+        key_to_hd_data = f'{namespace}:listings_honestdoor/{a}'
         log.info(key_to_data)
         listing_data = pd.DataFrame(json.loads(r_dic.redis.get(key_to_data)), index=[a])
-        dataframes.append(listing_data)
+        honestdoor_data = pd.read_json(r_dic.redis.get(key_to_hd_data))
+        honestdoor_data.columns = HONESTDOOR_COLS
+        honestdoor_data.index = [a] * honestdoor_data.shape[0]
+        merged_data = pd.concat([listing_data,honestdoor_data.head(1)],axis=1)
+        print(merged_data.T)
+        dataframes.append(merged_data)
     df = pd.concat(dataframes)
     df['photo'] = df['photo_url']
     df.drop(columns='photo_url', inplace=True)
+
+
     return df
+
 
 
 namespace = 'house-search'
@@ -116,7 +126,8 @@ class ReactiveDashboard(param.Parameterized):
         display_df['size'] = display_df['size'].apply(lambda x: x.split()[0] if x else -999).astype(float)
         display_df = display_df.set_index('address')
 
-        return display_df[['photo', 'price', 'bedrooms', 'bathrooms', 'size', 'lot_size', 'type', 'stories']]
+        return display_df[['photo', 'price','DateSold','PriceLastSold','Assessment Price',
+                           'bedrooms', 'bathrooms', 'size', 'lot_size', 'type', 'stories']]
 
     @pn.depends("stream")
     def location(self, x, y):
@@ -137,13 +148,13 @@ class ReactiveDashboard(param.Parameterized):
             'photo': HTMLTemplateFormatter(template=image_format)
         }
 
-        df_widget = pn.widgets.Tabulator(self.filter_df(), pagination='remote', page_size=10, formatters=tabulator_formatters)
+        df_widget = pn.widgets.Tabulator(self.filter_df(), pagination='remote', page_size=10, formatters=tabulator_formatters, sizing_mode='scale_both')
         df_widget.add_filter(self.param.price_slider, 'price')
         df_widget.add_filter(self.param.rooms_slider, 'bedrooms')
 
         layout = pn.Row(
             pn.Card(pn.bind(self.location, x=self.stream.param.x, y=self.stream.param.y), title="Map", sizing_mode='stretch_height'),
-            pn.Column(pn.Card(df_widget, title="Properties", sizing_mode='stretch_height'))
+            pn.Column(pn.Card(df_widget, title="Properties", sizing_mode='scale_both'))
         )
         bootstrap.main.append(layout)
 

@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import panel as pn
 import param
-from bokeh.models import HoverTool, ResetTool, PanTool, WheelZoomTool, ColumnDataSource
+from bokeh.models import HoverTool, ResetTool, PanTool, WheelZoomTool, ColumnDataSource, TapTool
 from bokeh.plotting import figure
 from holoviews.util.transform import lon_lat_to_easting_northing, easting_northing_to_lon_lat
 from redis_dict import RedisDict
@@ -12,6 +12,7 @@ from tqdm import tqdm
 from loguru import logger as log
 from constants import CSS_CLASS_CARD
 from utils import get_price_range, OSM_tile_source
+from bokeh.events import Tap
 from bokeh.models.widgets.tables import HTMLTemplateFormatter, NumberFormatter
 
 r_dic = RedisDict(namespace='house-search', host="10.30.40.132")
@@ -80,9 +81,10 @@ class ReactiveDashboard(param.Parameterized):
     pins = param.List(default=[])
     lat_longs = param.List(default=[])
     # house_df = get_dummy_house_df()
+    df_clean = pd.DataFrame([])
     house_df = house_df_default
     hover = HoverTool(tooltips=TOOLTIPS)
-    details_area = pn.pane.Markdown("# Details")
+    # details_area = pn.pane.Markdown("# Details")
     price_range = get_price_range()
     minimum_price = param.Selector(objects=list(price_range))
     maximum_price = param.Selector(objects=list(price_range), default=price_range[-1])
@@ -126,7 +128,7 @@ class ReactiveDashboard(param.Parameterized):
                   df_filtered['easting'].round(decimals=2).max())
         yrange = (df_filtered['northing'].round(decimals=2).min(),
                   df_filtered['northing'].round(decimals=2).max())
-        df_source = ColumnDataSource(df_filtered)
+        df_source = ColumnDataSource(df_filtered.reindex())
         tools = [ResetTool(), PanTool(), WheelZoomTool()]
         p = figure(x_range=xrange,
                    y_range=yrange,
@@ -135,7 +137,6 @@ class ReactiveDashboard(param.Parameterized):
                    tools=tools
                    )
         p.add_tile(OSM_tile_source)
-        print(df_filtered.shape)
         circle_renderer = p.circle(x='easting', y='northing',
                                    fill_color='midnightblue',
                                    fill_alpha=0.95,
@@ -148,7 +149,23 @@ class ReactiveDashboard(param.Parameterized):
                                    line_width=0)
         tool_circle_hover = HoverTool(renderers=[circle_renderer],
                                       tooltips=TOOLTIPS)
+        tool_circle_tap = TapTool(renderers=[circle_renderer])
         p.add_tools(tool_circle_hover)
+        p.add_tools(tool_circle_tap)
+
+        def callback(event):
+            i = df_source.selected.indices[0]
+            df = df_filtered[df_filtered['address'] == df_filtered['address'].iloc[i]]
+            print(df)
+
+
+        # def callback_id(attr, old, new):
+        #     print('Indices Hello!')
+        #     print(df_source.selected.indices)
+
+        p.on_event('tap', callback)
+        # df_source.selected.on_change('indices', callback_id)
+
         return p
 
     def filter_df(self):
@@ -181,6 +198,20 @@ class ReactiveDashboard(param.Parameterized):
         if x and y:
             self.pins.append([x, y])
         return self.house_plot
+
+    def format_details(self, df):
+        df = df.set_index('address')
+        a = df['photo']
+        df.drop(labels=['photo'], axis=1, inplace=True)
+        df.insert(0, 'photo', a)
+        df = df.drop(columns=['detail_url', 'lat', 'long', 'id', 'mls_number', 'key', 'easting', 'northing'])
+        image_format = r'<div> <img src="<%= value %>" height="100" alt="<%= value %>" width="100" style="float: left; margin: 0px 15px 15px 0px;" border="2" ></img> </div>'
+        tabulator_formatters_details = {
+            'price': NumberFormatter(format='$0,0'),
+            'size': NumberFormatter(format='0,0 sqft'),
+            'photo': HTMLTemplateFormatter(template=image_format)
+        }
+        return pn.widgets.Tabulator(df, formatters=tabulator_formatters_details, sizing_mode='scale_both')
 
     def panel(self):
         result = bootstrap
@@ -216,7 +247,13 @@ class ReactiveDashboard(param.Parameterized):
                                       title="Pins", sizing_mode='scale_both'))
 
         bootstrap.main.append(layout)
-        bootstrap.main.append(pn.Card(self.details_area,title='Details'))
+        df_tmp = self.house_df[self.house_df['address'] == self.house_df['address'][0]]
+        # df_tmp = df_tmp.set_index('address')
+        # a = df_tmp['photo']
+        # df_tmp.drop(labels=['photo'], axis=1, inplace=True)
+        # df_tmp.insert(0, 'photo', a)
+
+        bootstrap.main.append(pn.Card(self.house_plot.callback, title='Details'))
 
         return result
 

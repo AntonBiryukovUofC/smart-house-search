@@ -258,15 +258,7 @@ class ReactiveDashboard(param.Parameterized):
             pn.Column(pn.Card(df_widget, title="Properties", sizing_mode='scale_both'))
         )
 
-        details_table = {}
-        details_table['widget'] = pn.pane.Markdown('# daniel')
 
-        def callback(event):
-            print('test')
-            # details_table['widget'] = format_details(df_filtered.iloc[[df_source.selected.indices[0]], :])
-            details_table['widget'] = pn.pane.Markdown('# anton')
-
-        map_plot().on_event('tap', callback)
 
         result.sidebar.append(pn.Card(pn.bind(self.distance_df, x=self.stream.param.x, y=self.stream.param.y),
                                       title="Pins", sizing_mode='scale_both'))
@@ -278,7 +270,6 @@ class ReactiveDashboard(param.Parameterized):
         # df_tmp.drop(labels=['photo'], axis=1, inplace=True)
         # df_tmp.insert(0, 'photo', a)
 
-        bootstrap.main.append(pn.Card(details_table['widget'], title='Details'))
 
         return result
 

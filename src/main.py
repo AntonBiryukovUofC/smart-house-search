@@ -4,13 +4,14 @@ import numpy as np
 import pandas as pd
 import panel as pn
 import param
-from bokeh.models import HoverTool
+from bokeh.models import HoverTool, ResetTool, PanTool, WheelZoomTool, ColumnDataSource
+from bokeh.plotting import figure
 from holoviews.util.transform import lon_lat_to_easting_northing, easting_northing_to_lon_lat
 from redis_dict import RedisDict
 from tqdm import tqdm
 from loguru import logger as log
 from constants import CSS_CLASS_CARD
-from utils import get_price_range
+from utils import get_price_range, OSM_tile_source
 from bokeh.models.widgets.tables import HTMLTemplateFormatter, NumberFormatter
 
 r_dic = RedisDict(namespace='house-search', host="10.30.40.132")
@@ -35,7 +36,8 @@ TOOLTIPS = """
         </div>
     </div>
 """
-HONESTDOOR_COLS = ['DateSold','PriceLastSold','property_id','Assessment Price']
+HONESTDOOR_COLS = ['DateSold', 'PriceLastSold', 'property_id', 'Assessment Price']
+
 
 def pull_redis(redis_client):
     dataframes = []
@@ -46,11 +48,13 @@ def pull_redis(redis_client):
         key_to_data = f'{namespace}:listings/{a}'
         key_to_hd_data = f'{namespace}:listings_honestdoor/{a}'
         log.info(key_to_data)
+
+
         listing_data = pd.DataFrame(json.loads(r_dic.redis.get(key_to_data)), index=[a])
         honestdoor_data = pd.read_json(r_dic.redis.get(key_to_hd_data))
         honestdoor_data.columns = HONESTDOOR_COLS
         honestdoor_data.index = [a] * honestdoor_data.shape[0]
-        merged_data = pd.concat([listing_data,honestdoor_data.head(1)],axis=1)
+        merged_data = pd.concat([listing_data, honestdoor_data.head(1)], axis=1)
         dataframes.append(merged_data)
     df = pd.concat(dataframes)
     df['photo'] = df['photo_url']
@@ -59,14 +63,17 @@ def pull_redis(redis_client):
 
     df.drop(columns='photo_url', inplace=True)
 
-
     return df
-
 
 
 namespace = 'house-search'
 house_df_default = pull_redis(r_dic.redis)
+options = {}
+options['type'] = list(house_df_default['type'].unique())
+options['price_max'] = house_df_default['price'].max()
+options['price_min'] = house_df_default['price'].min()
 
+options['transit_time_max'] = 180
 
 class ReactiveDashboard(param.Parameterized):
     title = pn.pane.Markdown("# Smart House Search")
@@ -75,13 +82,21 @@ class ReactiveDashboard(param.Parameterized):
     # house_df = get_dummy_house_df()
     house_df = house_df_default
     hover = HoverTool(tooltips=TOOLTIPS)
-
+    details_area = pn.pane.Markdown("# Details")
     price_range = get_price_range()
     minimum_price = param.Selector(objects=list(price_range))
     maximum_price = param.Selector(objects=list(price_range), default=price_range[-1])
-    price_slider = param.Range(default=(0, house_df['price'].max()), bounds=(0, house_df['price'].max()))
-    rooms_slider = param.Range(default=(0, 7), bounds=(0, 7))
-    bathrooms_slider = param.Range(default=(0, 7), bounds=(0, 7))
+    price_slider = param.Range(label='Price range',
+                               default=(options['price_min'], options['price_max']), bounds=(0, options['price_max']),
+                               )
+    rooms_slider = param.Range(label='Bedrooms',
+                               default=(0, 7), bounds=(0, 7))
+    bathrooms_slider = param.Range(label = 'Bathrooms',
+                                   default=(0, 7), bounds=(0, 7))
+    type = param.ListSelector(label='Type of property',
+                              default=options['type'], objects=options['type'])
+    transit_time = param.Range(label='Transit time [mins]',
+                               default = (0,options['transit_time_max']), bounds=(0, options['transit_time_max']))
 
     map_background = hv.element.tiles.OSM().opts(width=600, height=550)
     stream = hv.streams.Tap(source=map_background, x=np.nan, y=np.nan)
@@ -104,19 +119,37 @@ class ReactiveDashboard(param.Parameterized):
             (df_filtered['bedrooms'] <= self.rooms_slider[1]) & (df_filtered['bedrooms'] >= self.rooms_slider[0])]
         df_filtered = df_filtered[
             (df_filtered['bathrooms'] <= self.rooms_slider[1]) & (df_filtered['bathrooms'] >= self.rooms_slider[0])]
+        # Create a bokeh figure and source here:
 
-        house_points = hv.Points(df_filtered, ['easting', 'northing'],
-                                 ['price', 'photo', 'address', 'size']).opts(tools=[self.hover, 'tap'],
-                                                                                                                   alpha=0.99,
-                                                                                                                   hover_fill_alpha=0.99, size=15,
-                                                                                                                   hover_fill_color='firebrick',
-                                                                                                                   width=600,
-                                                                                                                   height=550)
-        if self.pins:
-            pin_points = hv.Points(self.pins).opts(color='r', size=10, alpha=0.7)
-            return self.map_background * house_points * pin_points
-        else:
-            return self.map_background * house_points
+        # range bounds supplied in web mercator coordinates
+        xrange = (df_filtered['easting'].round(decimals=2).min(),
+                  df_filtered['easting'].round(decimals=2).max())
+        yrange = (df_filtered['northing'].round(decimals=2).min(),
+                  df_filtered['northing'].round(decimals=2).max())
+        df_source = ColumnDataSource(df_filtered)
+        tools = [ResetTool(), PanTool(), WheelZoomTool()]
+        p = figure(x_range=xrange,
+                   y_range=yrange,
+                   x_axis_type="mercator", y_axis_type="mercator",
+                   plot_width=600, plot_height=600,
+                   tools=tools
+                   )
+        p.add_tile(OSM_tile_source)
+        print(df_filtered.shape)
+        circle_renderer = p.circle(x='easting', y='northing',
+                                   fill_color='midnightblue',
+                                   fill_alpha=0.95,
+                                   line_color='dodgersblue',
+                                   hover_fill_color='firebrick',
+                                   line_alpha=0.91,
+                                   source=df_source,
+                                   size=10,
+                                   # hover_line_color='black',
+                                   line_width=0)
+        tool_circle_hover = HoverTool(renderers=[circle_renderer],
+                                      tooltips=TOOLTIPS)
+        p.add_tools(tool_circle_hover)
+        return p
 
     def filter_df(self):
         if 'northing' not in self.house_df.columns:
@@ -131,7 +164,7 @@ class ReactiveDashboard(param.Parameterized):
         display_df['size'] = display_df['size'].apply(lambda x: x.split()[0] if x else -999).astype(float)
         display_df = display_df.set_index('address')
 
-        return display_df[['photo', 'price','DateSold','PriceLastSold','Assessment Price',
+        return display_df[['photo', 'price', 'DateSold', 'PriceLastSold', 'Assessment Price',
                            'bedrooms', 'bathrooms', 'size', 'lot_size', 'type', 'stories']]
 
     @pn.depends("stream", watch=False)
@@ -140,7 +173,8 @@ class ReactiveDashboard(param.Parameterized):
         long = easting_northing_to_lon_lat(x, y)[0]
         self.lat_longs.append(['enter name', lat, long])
         df = pd.DataFrame(self.lat_longs, columns=['Name', 'Latitude', 'Longitude']).dropna().style.hide_index()
-        return pn.widgets.Tabulator(df.data, pagination='remote', page_size=10, sizing_mode='scale_both', show_index=False)
+        return pn.widgets.Tabulator(df.data, pagination='remote', page_size=10, sizing_mode='scale_both',
+                                    show_index=False)
 
     @pn.depends("stream", "pins")
     def location(self, x, y):
@@ -150,9 +184,13 @@ class ReactiveDashboard(param.Parameterized):
 
     def panel(self):
         result = bootstrap
-
-        result.sidebar.append(self.param.price_slider)
+        price_slider = pn.widgets.RangeSlider.from_param(self.param.price_slider, step=10000,format='0.0a')
+        result.sidebar.append(price_slider)
         result.sidebar.append(self.param.rooms_slider)
+        result.sidebar.append(self.param.bathrooms_slider)
+        result.sidebar.append(self.param.type)
+        result.sidebar.append(self.param.transit_time)
+
 
         image_format = r'<div> <img src="<%= value %>" height="70" alt="<%= value %>" width="70" style="float: left; margin: 0px 15px 15px 0px;" border="2" ></img> </div>'
         tabulator_formatters = {
@@ -175,9 +213,10 @@ class ReactiveDashboard(param.Parameterized):
         )
 
         result.sidebar.append(pn.Card(pn.bind(self.distance_df, x=self.stream.param.x, y=self.stream.param.y),
-                              title="Pins", sizing_mode='scale_both'))
+                                      title="Pins", sizing_mode='scale_both'))
 
         bootstrap.main.append(layout)
+        bootstrap.main.append(pn.Card(self.details_area,title='Details'))
 
         return result
 

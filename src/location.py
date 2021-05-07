@@ -4,6 +4,7 @@ import os
 import math
 from datetime import datetime
 import requests
+from redis import Redis
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
@@ -12,6 +13,11 @@ URL = "https://geocode.search.hereapi.com/v1/geocode"
 
 API_KEY = os.environ["HERE_API_KEY"]
 
+redis = Redis(host=os.getenv("REDIS_HOST", "10.20.40.57"))
+
+def location_id_format(longitude:float, latitude:float):
+    # this would be a good place to round
+    return "long_" + str(longitude) + "_lat_" + str(latitude)
 
 class Location:
 
@@ -23,12 +29,14 @@ class Location:
             self.longitude = response['items'][0]['position']['lng']
             self.latitude = response['items'][0]['position']['lat']
             self.mapview = response['items'][0]['mapView']
-            self.points_of_interest = []
         else:
-            self.longitude=longitude
-            self.latitude=latitude
+            self.longitude = longitude
+            self.latitude = latitude
 
-        self.listing_key=listing_key
+        # id could maybe be something else
+        self.id = location_id_format(self.longitude, self.latitude)
+        self.listing_key = listing_key
+        self.points_of_interest = []
 
     def add_point_of_interest(self, location):
         transit_route = transit_routes(self, location)
@@ -41,6 +49,7 @@ class Location:
                    'drive_time': drive_time,
                    'bike_time': bike_time}
         data = {'location': location, 'commute': commute}
+        redis.set(self.listing_key + "/poi/" + location.id, str(data['commute']))
         self.points_of_interest.append(data)
 
     def get_point_of_interest_data(self, location):
@@ -56,9 +65,8 @@ class Location:
         data = {'location': location, 'commute': commute}
         return data
 
-
     def __eq__(self, other):
-        if self.hereid == other.hereid or (self.listing_key is not None and self.listing_key == other.listing_key):
+        if self.id == other.id:
             return True
         else:
             return False

@@ -53,7 +53,12 @@ def pull_redis(redis_client):
         listing_data = pd.DataFrame(json.loads(r_dic.redis.get(key_to_data)), index=[a])
         honestdoor_data = pd.read_json(r_dic.redis.get(key_to_hd_data))
         # Calculated score data
-        score_data = {'Downtown Commute': round(float(redis_client.get(key_to_data + "/downtown_commute_score")), 2)}
+        dt_commute = redis_client.get(key_to_data + "/downtown_commute_score")
+        if dt_commute:
+            score_data = {'Downtown Commute': round(float(redis_client.get(key_to_data + "/downtown_commute_score")), 2)}
+        else:
+            score_data = {'Downtown Commute': 0}
+
         custom_score = redis_client.get(key_to_data + "/custom_commute_score")
 
         # if this isn't set could consider calculating
@@ -189,27 +194,7 @@ class ReactiveDashboard(param.Parameterized):
         tool_circle_tap = TapTool(renderers=[circle_renderer])
         p.add_tools(tool_circle_hover)
         p.add_tools(tool_circle_tap)
-
-        # details_table = {}
-        # details_table['widget'] = pn.pane.Markdown('# daniel')
-
-        # def callback_id(attr, old, new):
-        #     print('Indices Hello!')
-        #     print(df_filtered.iloc[[new[0]], :])
-        #     details_table = format_details(df_filtered.iloc[[new[0]], :])
-
-        # def callback(event):
-        #     print('test')
-        #     # details_table['widget'] = format_details(df_filtered.iloc[[df_source.selected.indices[0]], :])
-        #     details_table['widget'] = pn.pane.Markdown('# anton')
-        #
-        # p.on_event('tap', callback)
-
-        # df_source.selected.on_change('indices', callback)
-
-        # return pn.Column(p, details_table['widget'])
         return p
-
 
 
     def filter_df(self):
@@ -281,15 +266,7 @@ class ReactiveDashboard(param.Parameterized):
             pn.Column(pn.Card(df_widget, title="Properties", sizing_mode='scale_both'))
         )
 
-        details_table = {}
-        details_table['widget'] = pn.pane.Markdown('# daniel')
 
-        def callback(event):
-            print('test')
-            # details_table['widget'] = format_details(df_filtered.iloc[[df_source.selected.indices[0]], :])
-            details_table['widget'] = pn.pane.Markdown('# anton')
-
-        map_plot().on_event('tap', callback)
 
         result.sidebar.append(pn.Card(pn.bind(self.distance_df, x=self.stream.param.x, y=self.stream.param.y),
                                       title="Pins", sizing_mode='scale_both'))
@@ -303,7 +280,6 @@ class ReactiveDashboard(param.Parameterized):
         # df_tmp.drop(labels=['photo'], axis=1, inplace=True)
         # df_tmp.insert(0, 'photo', a)
 
-        bootstrap.main.append(pn.Card(details_table['widget'], title='Details'))
 
         return result
 

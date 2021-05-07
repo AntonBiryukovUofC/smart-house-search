@@ -258,6 +258,9 @@ class ReactiveDashboard(param.Parameterized):
                                          formatters=tabulator_formatters, sizing_mode='scale_both')
         df_widget.add_filter(self.param.price_slider, 'price')
         df_widget.add_filter(self.param.rooms_slider, 'bedrooms')
+        df_widget.add_filter(self.param.bathrooms_slider, 'bathrooms')
+        df_widget.add_filter(self.param.type_box, 'type')
+        df_widget.add_filter(self.param.dt_slider, 'Downtown Commute')
 
         # df_pins = pn.widgets.Tabulator(self.distance_df(), pagination='remote', page_size=10, sizing_mode='scale_both')
 

@@ -52,9 +52,22 @@ def pull_redis(redis_client):
 
         listing_data = pd.DataFrame(json.loads(r_dic.redis.get(key_to_data)), index=[a])
         honestdoor_data = pd.read_json(r_dic.redis.get(key_to_hd_data))
+        # Calculated score data
+        score_data = {'Downtown Commute': round(float(redis_client.get(key_to_data + "/downtown_commute_score")), 2)}
+        custom_score = redis_client.get(key_to_data + "/custom_commute_score")
+
+        # if this isn't set could consider calculating
+        if custom_score:
+            score_data['Custom Commute'] = round(float(redis_client.get(key_to_data + "/custom_commute_score")), 2)
+        score_pd = pd.DataFrame(score_data, index=[a])
+
+        # travel info for downtown
+        downtown_travel = {'Downtown Travel': redis_client.get(key_to_data + "/downtown")}
+        dt_pd=pd.DataFrame(downtown_travel, index=[a])
+
         honestdoor_data.columns = HONESTDOOR_COLS
         honestdoor_data.index = [a] * honestdoor_data.shape[0]
-        merged_data = pd.concat([listing_data, honestdoor_data.head(1)], axis=1)
+        merged_data = pd.concat([listing_data, honestdoor_data.head(1), score_pd, dt_pd], axis=1)
         dataframes.append(merged_data)
     df = pd.concat(dataframes)
     df['photo'] = df['photo_url']
@@ -122,10 +135,10 @@ class ReactiveDashboard(param.Parameterized):
         # Create a bokeh figure and source here:
 
         # range bounds supplied in web mercator coordinates
-        xrange = (df_filtered['easting'].round(decimals=2).min(),
-                  df_filtered['easting'].round(decimals=2).max())
-        yrange = (df_filtered['northing'].round(decimals=2).min(),
-                  df_filtered['northing'].round(decimals=2).max())
+        xrange = (df_filtered['easting'].round(decimals=2).min()*0.999,
+                  df_filtered['easting'].round(decimals=2).max()*1.001)
+        yrange = (df_filtered['northing'].round(decimals=2).min()*0.999,
+                  df_filtered['northing'].round(decimals=2).max()*1.001)
         df_source = ColumnDataSource(df_filtered)
         tools = [ResetTool(), PanTool(), WheelZoomTool()]
         p = figure(x_range=xrange,
@@ -163,9 +176,15 @@ class ReactiveDashboard(param.Parameterized):
                 display_df = display_df.drop(columns=col, axis=1)
         display_df['size'] = display_df['size'].apply(lambda x: x.split()[0] if x else -999).astype(float)
         display_df = display_df.set_index('address')
+        if 'Custom Commute' in display_df:
+            ret = display_df[['photo', 'price', 'DateSold', 'PriceLastSold', 'Assessment Price',
+                              'bedrooms', 'bathrooms', 'size', 'lot_size', 'type', 'stories', 'Custom Commute',
+                              'Downtown Commute']]
+        else:
+            ret = display_df[['photo', 'price', 'DateSold', 'PriceLastSold', 'Assessment Price',
+                              'bedrooms', 'bathrooms', 'size', 'lot_size', 'type', 'stories', 'Downtown Commute']]
 
-        return display_df[['photo', 'price', 'DateSold', 'PriceLastSold', 'Assessment Price',
-                           'bedrooms', 'bathrooms', 'size', 'lot_size', 'type', 'stories']]
+        return ret
 
     @pn.depends("stream", watch=False)
     def distance_df(self, x, y):

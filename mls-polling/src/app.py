@@ -8,6 +8,7 @@ from pydantic import BaseModel
 import re
 import math
 import functools
+from loguru import logger as log
 
 API_URL = 'https://api37.realtor.ca'
 NAMESPACE = "house-search:"
@@ -36,11 +37,11 @@ class ListingModel(BaseModel):
 
 async def store_single_listing_data(data_chunk, redis, redis_semaphore):
     address = data_chunk['Property']['Address']['AddressText']
-    print(f"Storing address={address}")
+    log.info(f"Storing address={address}")
 
     regex_match = re.search('/real-estate/([0-9]*)/(.*)', data_chunk["RelativeDetailsURL"])
     url_key = regex_match.group(2)
-    print(f"at url_key={url_key}")
+    log.info(f"at url_key={url_key}")
 
     lat = data_chunk["Property"]['Address']["Latitude"]
     long = data_chunk["Property"]['Address']["Longitude"]
@@ -48,7 +49,7 @@ async def store_single_listing_data(data_chunk, redis, redis_semaphore):
     try:
         price=float(data_chunk["Property"]["Price"].lstrip("$").replace(",", ""))
     except Exception:
-        print(f"Failed to convert price string {data_chunk['Property']['Price'].lstrip('$').replace(',', '')} to float")
+        log.error(f"Failed to convert price string {data_chunk['Property']['Price'].lstrip('$').replace(',', '')} to float")
         price = None
 
     if "SizeTotal" in data_chunk["Land"]:
@@ -111,7 +112,7 @@ async def store_single_listing_data(data_chunk, redis, redis_semaphore):
 
 async def poll_page(page, options, page_pull_semaphore):
     async with page_pull_semaphore:
-        print(f"pulling page {page}")
+        log.info(f"pulling page {page}")
         loop = asyncio.get_event_loop()
         options["CurrentPage"] = page
         post = functools.partial(requests.post, API_URL + "/Listing.svc/PropertySearch_Post", data=options)
@@ -145,7 +146,7 @@ async def poll_search_url(redis, redis_semaphore):
 
     page_pull_semaphore = asyncio.BoundedSemaphore(value=PARALLEL_PAGE_PULL_COUNT)
     page_tasks = [poll_page(pg, search_opts, page_pull_semaphore) for pg in range(2, pages)]
-    print(f"About to pull {pages-1} of data")
+    log.info(f"About to pull {pages-1} of data")
 
     page_results = await asyncio.gather(*page_tasks)
 
@@ -158,19 +159,22 @@ async def poll_search_url(redis, redis_semaphore):
 
 
 async def main():
-    print("starting main")
+    log.info("starting main")
     redis_host = os.getenv("REDIS_HOST", "10.20.40.57")
+    delay_time = int(os.getenv("CYCLE_TIME", 43200))
+
+    log.info(f"starting with redis_host={redis_host} and delay_time={delay_time}")
 
     redis_connection = await asyncio_redis.Pool.create(host=redis_host, poolsize=REDIS_CONN_COUNT)
     redis_semaphore = asyncio.BoundedSemaphore(value=REDIS_CONN_COUNT)
 
     while True:
         # poll mls search
-        print("about to poll")
+        log.info("about to poll")
         await poll_search_url(redis_connection, redis_semaphore)
 
         # wait
-        time.sleep(3600)
+        time.sleep(delay_time)
 
 
 asyncio.run(main())

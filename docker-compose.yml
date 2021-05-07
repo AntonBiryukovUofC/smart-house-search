@@ -1,8 +1,19 @@
-redis:
-    image: redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - /data/redis:/data
-    entrypoint: redis-server --appendonly yes
-    #restart: unless-stopped
+version: '3.4'
+services:
+  redis:
+      image: redis
+      ports:
+        - "6379:6379"
+      volumes:
+        - /data/redis:/data
+      entrypoint: redis-server --appendonly yes
+      #restart: unless-stopped
+
+  mls-polling:
+      build:
+        context: mls-polling/
+        dockerfile: ./Dockerfile
+        target: mls-polling
+      environment:
+        - REDIS_HOST=redis
+        - CYCLE_TIME=43200

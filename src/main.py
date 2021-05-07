@@ -182,24 +182,25 @@ class ReactiveDashboard(param.Parameterized):
         p.add_tools(tool_circle_hover)
         p.add_tools(tool_circle_tap)
 
-        details_table = {}
-        details_table['widget'] = pn.pane.Markdown('# daniel')
+        # details_table = {}
+        # details_table['widget'] = pn.pane.Markdown('# daniel')
 
         # def callback_id(attr, old, new):
         #     print('Indices Hello!')
         #     print(df_filtered.iloc[[new[0]], :])
         #     details_table = format_details(df_filtered.iloc[[new[0]], :])
 
-        def callback(event):
-            print('test')
-            # details_table['widget'] = format_details(df_filtered.iloc[[df_source.selected.indices[0]], :])
-            details_table['widget'] = pn.pane.Markdown('# anton')
-
-        p.on_event('tap', callback)
+        # def callback(event):
+        #     print('test')
+        #     # details_table['widget'] = format_details(df_filtered.iloc[[df_source.selected.indices[0]], :])
+        #     details_table['widget'] = pn.pane.Markdown('# anton')
+        #
+        # p.on_event('tap', callback)
 
         # df_source.selected.on_change('indices', callback)
 
-        return pn.Column(p, details_table['widget'])
+        # return pn.Column(p, details_table['widget'])
+        return p
 
 
 
@@ -263,13 +264,24 @@ class ReactiveDashboard(param.Parameterized):
 
         # df_pins = pn.widgets.Tabulator(self.distance_df(), pagination='remote', page_size=10, sizing_mode='scale_both')
 
+        map_plot = self.house_plot
+
         layout = pn.Row(
-            pn.Card(pn.bind(self.location, x=self.stream.param.x, y=self.stream.param.y), title="Map",
-                    sizing_mode='stretch_height'),
+            # pn.Card(pn.bind(map_plot, x=self.stream.param.x, y=self.stream.param.y), title="Map",
+            #         sizing_mode='stretch_height'),
+            pn.Card(map_plot, title="Map", sizing_mode='stretch_height'),
             pn.Column(pn.Card(df_widget, title="Properties", sizing_mode='scale_both'))
         )
 
+        details_table = {}
+        details_table['widget'] = pn.pane.Markdown('# daniel')
 
+        def callback(event):
+            print('test')
+            # details_table['widget'] = format_details(df_filtered.iloc[[df_source.selected.indices[0]], :])
+            details_table['widget'] = pn.pane.Markdown('# anton')
+
+        map_plot().on_event('tap', callback)
 
         result.sidebar.append(pn.Card(pn.bind(self.distance_df, x=self.stream.param.x, y=self.stream.param.y),
                                       title="Pins", sizing_mode='scale_both'))
@@ -281,7 +293,7 @@ class ReactiveDashboard(param.Parameterized):
         # df_tmp.drop(labels=['photo'], axis=1, inplace=True)
         # df_tmp.insert(0, 'photo', a)
 
-        # bootstrap.main.append(pn.Card(self.details_table, title='Details'))
+        bootstrap.main.append(pn.Card(details_table['widget'], title='Details'))
 
         return result
 

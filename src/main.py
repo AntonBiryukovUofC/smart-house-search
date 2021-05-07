@@ -44,7 +44,7 @@ def pull_redis(redis_client):
     dataframes = []
     listings_honestdoor_addresses = redis_client.smembers('%s:listings_honestdoor' % namespace)
     # Pull realtorca records
-    for a in tqdm(list(listings_honestdoor_addresses)[:5]):
+    for a in tqdm(list(listings_honestdoor_addresses)[:100]):
         # log.info(a)
         key_to_data = f'{namespace}:listings/{a}'
         key_to_hd_data = f'{namespace}:listings_honestdoor/{a}'
@@ -99,14 +99,22 @@ def format_details(df):
     a = df['photo']
     df.drop(labels=['photo'], axis=1, inplace=True)
     df.insert(0, 'photo', a)
-    df = df.drop(columns=['detail_url', 'lat', 'long', 'id', 'mls_number', 'key', 'easting', 'northing'])
+    # df = df.drop(columns=['detail_url', 'lat', 'long', 'id', 'mls_number', 'key', 'easting', 'northing', 'Downtown Travel'])
+    if 'Custom Commute' in df.columns:
+        ret = df[['photo', 'price', 'DateSold', 'PriceLastSold', 'Assessment Price',
+                          'bedrooms', 'bathrooms', 'size', 'lot_size', 'type', 'stories', 'Custom Commute',
+                          'Downtown Commute']]
+    else:
+        ret = df[['photo', 'price', 'DateSold', 'PriceLastSold', 'Assessment Price',
+                          'bedrooms', 'bathrooms', 'size', 'lot_size', 'type', 'stories', 'Downtown Commute']]
+
     image_format = r'<div> <img src="<%= value %>" height="100" alt="<%= value %>" width="100" style="float: left; margin: 0px 15px 15px 0px;" border="2" ></img> </div>'
     tabulator_formatters_details = {
         'price': NumberFormatter(format='$0,0'),
         'size': NumberFormatter(format='0,0 sqft'),
         'photo': HTMLTemplateFormatter(template=image_format)
     }
-    return pn.widgets.Tabulator(df, formatters=tabulator_formatters_details, sizing_mode='scale_both')
+    return pn.widgets.Tabulator(ret, formatters=tabulator_formatters_details, sizing_mode='scale_both')
 
 
 class ReactiveDashboard(param.Parameterized):
@@ -262,18 +270,24 @@ class ReactiveDashboard(param.Parameterized):
             pn.Column(pn.Card(df_widget, title="Properties", sizing_mode='scale_both'))
         )
 
+        details_table = {}
+        details_table['widget'] = pn.pane.Markdown('# daniel')
 
+        def callback(event):
+            print('test')
+            # details_table['widget'] = format_details(df_filtered.iloc[[df_source.selected.indices[0]], :])
+            details_table['widget'] = pn.pane.Markdown('# anton')
+
+        map_plot().on_event('tap', callback)
 
         result.sidebar.append(pn.Card(pn.bind(self.distance_df, x=self.stream.param.x, y=self.stream.param.y),
                                       title="Pins", sizing_mode='scale_both'))
 
         bootstrap.main.append(layout)
-        # df_tmp = self.house_df[self.house_df['address'] == self.house_df['address'][0]]
-        # df_tmp = df_tmp.set_index('address')
-        # a = df_tmp['photo']
-        # df_tmp.drop(labels=['photo'], axis=1, inplace=True)
-        # df_tmp.insert(0, 'photo', a)
 
+        df_tmp = self.house_df.copy()[self.house_df['address'] == self.house_df['address'][0]]
+        details_table['widget'] = format_details(df_tmp.iloc[[0], :])
+        bootstrap.main.append(pn.Card(details_table['widget'], title='Details'))
 
         return result
 

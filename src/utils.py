@@ -1,5 +1,25 @@
 import numpy as np
 import pandas as pd
+import bokeh.tile_providers
+# Bokeh-related contants:
+from bokeh.models import WMTSTileSource
+
+tile_options = {
+    'url': 'https://tiles.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png',
+    'attribution': """
+'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ, TomTom,
+Intermap, iPC, USGS, FAO, NPS, NRCAN, GeoBase, Kadaster NL,
+Ordnance Survey, Esri Japan, METI, Esri China (Hong Kong), and the GIS User Community'
+    """}
+OSM_tile_source = WMTSTileSource(**tile_options)
+
+def get_latitude_longitude_listing(listing_key, redis):
+    if listing_key is None:
+        return False
+    else:
+        lat = float(redis.get(listing_key + "/latitude"))
+        long = float(redis.get(listing_key + "/longitude"))
+        return lat, long
 
 
 def get_price_range():

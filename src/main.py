@@ -186,7 +186,7 @@ class ReactiveDashboard(param.Parameterized):
         tool_circle_tap = TapTool(renderers=[circle_renderer])
         p.add_tools(tool_circle_hover)
         p.add_tools(tool_circle_tap)
-
+        return p
 
 
     def filter_df(self):

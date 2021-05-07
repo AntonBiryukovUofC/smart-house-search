@@ -94,14 +94,22 @@ def format_details(df):
     a = df['photo']
     df.drop(labels=['photo'], axis=1, inplace=True)
     df.insert(0, 'photo', a)
-    df = df.drop(columns=['detail_url', 'lat', 'long', 'id', 'mls_number', 'key', 'easting', 'northing'])
+    # df = df.drop(columns=['detail_url', 'lat', 'long', 'id', 'mls_number', 'key', 'easting', 'northing', 'Downtown Travel'])
+    if 'Custom Commute' in df.columns:
+        ret = df[['photo', 'price', 'DateSold', 'PriceLastSold', 'Assessment Price',
+                          'bedrooms', 'bathrooms', 'size', 'lot_size', 'type', 'stories', 'Custom Commute',
+                          'Downtown Commute']]
+    else:
+        ret = df[['photo', 'price', 'DateSold', 'PriceLastSold', 'Assessment Price',
+                          'bedrooms', 'bathrooms', 'size', 'lot_size', 'type', 'stories', 'Downtown Commute']]
+
     image_format = r'<div> <img src="<%= value %>" height="100" alt="<%= value %>" width="100" style="float: left; margin: 0px 15px 15px 0px;" border="2" ></img> </div>'
     tabulator_formatters_details = {
         'price': NumberFormatter(format='$0,0'),
         'size': NumberFormatter(format='0,0 sqft'),
         'photo': HTMLTemplateFormatter(template=image_format)
     }
-    return pn.widgets.Tabulator(df, formatters=tabulator_formatters_details, sizing_mode='scale_both')
+    return pn.widgets.Tabulator(ret, formatters=tabulator_formatters_details, sizing_mode='scale_both')
 
 
 class ReactiveDashboard(param.Parameterized):
@@ -287,7 +295,9 @@ class ReactiveDashboard(param.Parameterized):
                                       title="Pins", sizing_mode='scale_both'))
 
         bootstrap.main.append(layout)
-        # df_tmp = self.house_df[self.house_df['address'] == self.house_df['address'][0]]
+
+        df_tmp = self.house_df.copy()[self.house_df['address'] == self.house_df['address'][0]]
+        details_table['widget'] = format_details(df_tmp.iloc[[0], :])
         # df_tmp = df_tmp.set_index('address')
         # a = df_tmp['photo']
         # df_tmp.drop(labels=['photo'], axis=1, inplace=True)

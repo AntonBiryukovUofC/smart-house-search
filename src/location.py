@@ -3,11 +3,7 @@ import json
 import os
 import math
 from datetime import datetime
-from dotenv import find_dotenv, load_dotenv
 import requests
-
-load_dotenv(find_dotenv())
-
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
@@ -19,15 +15,20 @@ API_KEY = os.environ["HERE_API_KEY"]
 
 class Location:
 
-    def __init__(self, response: dict):
+    def __init__(self, response: dict = None, longitude=None, latitude=None, listing_key=None):
+        if response is not None:
+            if 'id' in response['items'][0]:
+                self.hereid = response['items'][0]['id']
+            self.address = response['items'][0]['title']
+            self.longitude = response['items'][0]['position']['lng']
+            self.latitude = response['items'][0]['position']['lat']
+            self.mapview = response['items'][0]['mapView']
+            self.points_of_interest = []
+        else:
+            self.longitude=longitude
+            self.latitude=latitude
 
-        self.hereid = response['items'][0]['id']
-        self.address = response['items'][0]['title']
-        self.longitude = response['items'][0]['position']['lng']
-        self.latitude = response['items'][0]['position']['lat']
-        self.mapview = response['items'][0]['mapView']
-        self.points_of_interest = []
-        self.listing_key = None
+        self.listing_key=listing_key
 
     def add_point_of_interest(self, location):
         transit_route = transit_routes(self, location)
@@ -42,8 +43,22 @@ class Location:
         data = {'location': location, 'commute': commute}
         self.points_of_interest.append(data)
 
+    def get_point_of_interest_data(self, location):
+        transit_route = transit_routes(self, location)
+        time = transit_time(transit_route['routes'][0])
+        walk_time = transit_time(walk(self, location)['routes'][0])
+        drive_time = transit_time(drive(self, location)['routes'][0])
+        bike_time = transit_time(bike(self, location)['routes'][0])
+        commute = {'transit_route': transit_route, 'transit_time': time,
+                   'walk_time': walk_time,
+                   'drive_time': drive_time,
+                   'bike_time': bike_time}
+        data = {'location': location, 'commute': commute}
+        return data
+
+
     def __eq__(self, other):
-        if self.hereid == other.hereid:
+        if self.hereid == other.hereid or (self.listing_key is not None and self.listing_key == other.listing_key):
             return True
         else:
             return False

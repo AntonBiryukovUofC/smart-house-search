@@ -220,7 +220,6 @@ def add_custom_commute_score_to_one(location, walk_weight=1, bike_weight=1, tran
             log.exception(traceback.format_exc())
 
 def add_downtown_commute_score_to_one(location, walk_weight=1, bike_weight=1, transit_weight=1, drive_weight=1):
-    listings = redis.keys('house-search:listings/*')
     if walk_weight < 0:
         walk_weight = 1
         log.info("Reset negative walk weight to 1")
@@ -244,20 +243,20 @@ def add_downtown_commute_score_to_one(location, walk_weight=1, bike_weight=1, tr
         weighted_sum = 4
         walk_weight = bike_weight = transit_weight = drive_weight = 1
 
-        try:
-            walk_score = bike_score = transit_score = drive_score = 0
-            data = ast.literal_eval(redis.get(location.listing_key+"/downtowm").decode())
-            walk_score = walk_score + calculate_walk_score(data['walk_time'])
-            bike_score = bike_score + calculate_bike_score(data['bike_time'])
-            drive_score = drive_score + calculate_drive_score(data['drive_time'])
-            transit_score = transit_score + calculate_transit_score(data['transit_time'],
+    try:
+        walk_score = bike_score = transit_score = drive_score = 0
+        data = ast.literal_eval(redis.get(location.listing_key+"/downtown").decode())
+        walk_score = walk_score + calculate_walk_score(data['walk_time'])
+        bike_score = bike_score + calculate_bike_score(data['bike_time'])
+        drive_score = drive_score + calculate_drive_score(data['drive_time'])
+        transit_score = transit_score + calculate_transit_score(data['transit_time'],
                                                                         data['transit_route']['routes'][0])
-            score = (
+        score = (
                             walk_score * walk_weight + bike_score * bike_weight + transit_score * transit_weight + drive_score * drive_weight) / (
                             weighted_sum)
-            redis.set(location.listing_key + "/downtown_commute_score", score)
-        except Exception as e:
-            log.exception(traceback.format_exc())
+        redis.set(location.listing_key + "/downtown_commute_score", score)
+    except Exception as e:
+        log.exception(traceback.format_exc())
 
 
 def main():

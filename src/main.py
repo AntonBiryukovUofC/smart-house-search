@@ -1,17 +1,16 @@
 import json
-
+import re
 import holoviews as hv
 import numpy as np
 import pandas as pd
 import panel as pn
 import param
 from bokeh.models import HoverTool
-from holoviews.util.transform import lon_lat_to_easting_northing
+from holoviews.util.transform import lon_lat_to_easting_northing, easting_northing_to_lon_lat
 from redis_dict import RedisDict
 from tqdm import tqdm
 from loguru import logger as log
 from constants import CSS_CLASS_CARD
-#from location import geocode_destination_here
 from utils import get_price_range, get_dummy_house_df
 
 r_dic = RedisDict(namespace='house-search', host="10.30.40.132")
@@ -89,8 +88,12 @@ class ReactiveDashboard(param.Parameterized):
             self.get_easting_northing()
 
         display_df = self.house_df[
-            (self.house_df['price'] <= self.maximum_price) & (self.house_df['price'] >= self.minimum_price)].drop(
-            columns=['lat', 'long', 'easting', 'northing'])
+            (self.house_df['price'] <= self.maximum_price) & (self.house_df['price'] >= self.minimum_price)]
+        cols = ['lat', 'long', 'easting', 'northing', 'detail_url', 'key', 'mls_number', 'id', 'photo_url']
+        for col in cols:
+            if col in display_df.columns:
+                display_df = display_df.drop(columns=col, axis=1)
+        display_df['size'] = display_df['size'].apply(lambda x: x.split()[0] if x else -999).astype(float)
         display_df = display_df.set_index('address')
         return display_df
 
@@ -123,7 +126,7 @@ class ReactiveDashboard(param.Parameterized):
         result.sidebar.append(self.param.price_slider)
         result.sidebar.append(self.param.rooms_slider)
 
-        df_widget = pn.widgets.Tabulator(self.filter_df())
+        df_widget = pn.widgets.Tabulator(self.filter_df(), pagination='remote', page_size=10)
         df_widget.add_filter(self.param.price_slider, 'price')
         df_widget.add_filter(self.param.rooms_slider, 'bedrooms')
 
@@ -137,7 +140,7 @@ class ReactiveDashboard(param.Parameterized):
 
         layout = pn.Row(
             pn.Card(pn.bind(self.location, x=self.stream.param.x, y=self.stream.param.y), title="Map"),
-            pn.Column(pn.Card(df_widget, title="Properties"), pn.Card(df_widget, title="Properties"))
+            pn.Column(pn.Card(df_widget, title="Properties"))
         )
         bootstrap.main.append(layout)
 
